@@ -1,0 +1,80 @@
+{
+  "name": "prisma-effect-kysely",
+  "version": "1.0.0",
+  "description": "Prisma generator that creates Effect Schema types from Prisma schema compatible with Kysely",
+  "license": "MIT",
+  "author": "Samuel Ho",
+  "main": "dist/generator/index.js",
+  "bin": {
+    "prisma-effect-kysely": "dist/generator/index.js"
+  },
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./dist/generator/index.d.ts",
+      "require": "./dist/generator/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "prisma",
+    "generator",
+    "effect",
+    "schema",
+    "typescript",
+    "type-safety",
+    "prisma-generator",
+    "effect-ts"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelho-dev/prisma-effect-kysely.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samuelho-dev/prisma-effect-kysely/issues"
+  },
+  "homepage": "https://github.com/samuelho-dev/prisma-effect-kysely#readme",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "typecheck": "tsc --noEmit -p tsconfig.lib.json",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@prisma/generator-helper": "^6.2.1",
+    "effect": "^3.11.7",
+    "prettier": "^3.4.2"
+  },
+  "peerDependencies": {
+    "kysely": "^0.27.2"
+  },
+  "peerDependenciesMeta": {
+    "kysely": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@prisma/internals": "^6.16.3",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.5",
+    "jest": "^29.7.0",
+    "kysely": "^0.27.2",
+    "prisma": "^6.16.3",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
