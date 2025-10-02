@@ -1,0 +1,1 @@
+{"version":3,"file":"file-manager.d.ts","sourceRoot":"","sources":["../../../src/generator/utils/file-manager.ts"],"names":[],"mappings":"AAIA;;GAEG;AACH,qBAAa,WAAW;IACV,OAAO,CAAC,QAAQ,CAAC,UAAU;gBAAV,UAAU,EAAE,MAAM;IAE/C;;OAEG;IACG,eAAe;IAIrB;;OAEG;IACG,SAAS,CAAC,QAAQ,EAAE,MAAM,EAAE,OAAO,EAAE,MAAM;IAMjD;;OAEG;IACH,aAAa;CAGd"}

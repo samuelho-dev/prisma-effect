@@ -1,0 +1,30 @@
+# Source files (only ship compiled dist/)
+src/
+
+# Test files
+**/*.spec.ts
+**/*.test.ts
+__tests__/
+coverage/
+
+# Config files
+jest.config.ts
+tsconfig.spec.json
+tsconfig.lib.json
+project.json
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts (keep dist/ and source maps for debugging)
+
+# Misc
+.DS_Store
+node_modules/
