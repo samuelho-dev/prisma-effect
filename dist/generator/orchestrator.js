@@ -1,20 +1,21 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GeneratorOrchestrator = void 0;
-const file_manager_1 = require("./utils/file-manager");
-const enum_generator_1 = require("./generators/enum-generator");
-const type_generator_1 = require("./generators/type-generator");
-const index_generator_1 = require("./generators/index-generator");
+const file_manager_1 = require("../utils/file-manager");
+const generator_1 = require("../prisma/generator");
+const generator_2 = require("../effect/generator");
+const generator_3 = require("../kysely/generator");
 /**
  * Orchestrates the generation of Effect Schema types from Prisma schema
+ * Uses domain-driven generators: Prisma → Effect → Kysely
  */
 class GeneratorOrchestrator {
     constructor(options) {
         const outputPath = this.validateOutputPath(options);
         this.fileManager = new file_manager_1.FileManager(outputPath);
-        this.enumGenerator = new enum_generator_1.EnumGenerator();
-        this.typeGenerator = new type_generator_1.TypeGenerator(options.dmmf);
-        this.indexGenerator = new index_generator_1.IndexGenerator();
+        this.prismaGen = new generator_1.PrismaGenerator(options.dmmf);
+        this.effectGen = new generator_2.EffectGenerator(options.dmmf);
+        this.kyselyGen = new generator_3.KyselyGenerator(options.dmmf);
     }
     /**
      * Validate and extract output path from generator options
@@ -37,8 +38,8 @@ class GeneratorOrchestrator {
         await this.fileManager.ensureDirectory();
         // Generate all files in parallel for better performance
         await Promise.all([
-            this.generateEnums(options),
-            this.generateTypes(options),
+            this.generateEnums(),
+            this.generateTypes(),
             this.generateIndex(),
         ]);
         this.logComplete();
@@ -46,22 +47,46 @@ class GeneratorOrchestrator {
     /**
      * Generate enums.ts file
      */
-    async generateEnums(options) {
-        const content = this.enumGenerator.generateFile(options.dmmf);
+    async generateEnums() {
+        const enums = this.prismaGen.getEnums();
+        const content = this.effectGen.generateEnums(enums);
         await this.fileManager.writeFile('enums.ts', content);
     }
     /**
      * Generate types.ts file
      */
-    async generateTypes(options) {
-        const content = this.typeGenerator.generateFile(options.dmmf);
+    async generateTypes() {
+        const models = this.prismaGen.getModels();
+        const hasEnums = this.prismaGen.getEnums().length > 0;
+        // Generate header with imports
+        const header = this.effectGen.generateTypesHeader(hasEnums);
+        // Generate all model schemas
+        const modelSchemas = models
+            .map((model) => {
+            const fields = this.prismaGen.getModelFields(model);
+            const baseSchemaName = `_${model.name}`;
+            // Generate base schema with Kysely fields
+            const kyselyFields = this.kyselyGen.generateModelFields(fields);
+            const baseSchema = `// ${model.name} Base Schema
+export const ${baseSchemaName} = Schema.Struct({
+${kyselyFields}
+});`;
+            // Generate operational schemas and type exports
+            const operationalSchema = this.effectGen.generateOperationalSchemas(model);
+            const typeExports = this.effectGen.generateTypeExports(model);
+            return `${baseSchema}\n\n${operationalSchema}\n\n${typeExports}`;
+        })
+            .join('\n\n');
+        // Generate DB interface
+        const dbInterface = this.kyselyGen.generateDBInterface(models);
+        const content = `${header}\n\n${modelSchemas}\n\n${dbInterface}`;
         await this.fileManager.writeFile('types.ts', content);
     }
     /**
      * Generate index.ts file
      */
     async generateIndex() {
-        const content = this.indexGenerator.generateFile();
+        const content = this.kyselyGen.generateIndexFile();
         await this.fileManager.writeFile('index.ts', content);
     }
     /**
@@ -70,7 +95,7 @@ class GeneratorOrchestrator {
     logStart(options) {
         const modelCount = options.dmmf.datamodel.models.filter((m) => !m.name.startsWith('_')).length;
         const enumCount = options.dmmf.datamodel.enums.length;
-        console.log('[Effect Generator] Starting generation...');
+        console.log('[Prisma Effect Kysely Generator] Starting generation...');
         console.log(`[Effect Generator] Processing ${modelCount} models, ${enumCount} enums`);
     }
     /**

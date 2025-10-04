@@ -6,7 +6,7 @@ import { rm } from 'fs/promises';
 import { join } from 'path';
 
 // Mock prettier to avoid dynamic import issues in Jest
-jest.mock('../generator/utils/templates', () => ({
+jest.mock('../utils/templates', () => ({
   formatCode: jest.fn((code: string) => Promise.resolve(code)),
 }));
 

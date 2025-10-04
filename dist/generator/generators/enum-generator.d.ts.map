@@ -1,1 +1,0 @@
-{"version":3,"file":"enum-generator.d.ts","sourceRoot":"","sources":["../../../src/generator/generators/enum-generator.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,IAAI,EAAE,MAAM,0BAA0B,CAAC;AAErD;;GAEG;AACH,qBAAa,aAAa;IACxB;;OAEG;IACH,YAAY,CAAC,IAAI,EAAE,IAAI,CAAC,QAAQ;IAUhC;;OAEG;IACH,OAAO,CAAC,cAAc;IAOtB;;OAEG;IACH,OAAO,CAAC,eAAe;IAIvB;;;OAGG;IACH,OAAO,CAAC,kBAAkB;CAiB3B"}

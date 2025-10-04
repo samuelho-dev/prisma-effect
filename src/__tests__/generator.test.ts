@@ -6,7 +6,7 @@ import { rm } from 'fs/promises';
 import { join } from 'path';
 
 // Mock prettier to avoid dynamic import issues in Jest
-jest.mock('../generator/utils/templates', () => ({
+jest.mock('../utils/templates', () => ({
   formatCode: jest.fn((code: string) => Promise.resolve(code)),
 }));
 
@@ -256,29 +256,27 @@ describe('Prisma Effect Schema Generator - E2E', () => {
       typesContent = readFileSync(join(testOutputPath, 'types.ts'), 'utf-8');
     });
 
-    it('should detect UUID via @db.Uuid (Strategy 1 - Native Type)', () => {
+    it('should detect UUID via @db.Uuid native type (Strategy 1)', () => {
       // AllTypes.id has @db.Uuid
       expect(typesContent).toMatch(/AllTypes[\s\S]*?id:\s*Schema\.UUID/);
-    });
 
-    it('should detect UUID via documentation (Strategy 2)', () => {
-      // AllTypes.tenant_id has /// @db.Uuid comment
-      expect(typesContent).toMatch(/AllTypes[\s\S]*?tenant_id:\s*Schema\.UUID/);
-    });
-
-    it('should detect UUID via default value (Strategy 3)', () => {
-      // AllTypes.session_id has @default(dbgenerated("gen_random_uuid()"))
+      // AllTypes.session_id has @db.Uuid @default(dbgenerated("gen_random_uuid()"))
       expect(typesContent).toMatch(
         /_AllTypes[\s\S]*?session_id:\s*generated\(Schema\.UUID\)/,
       );
     });
 
-    it('should detect UUID via field name patterns (Strategy 4)', () => {
-      // User.id matches pattern (with columnType for @id @default)
+    it('should detect UUID via documentation comment (Strategy 2)', () => {
+      // AllTypes.tenant_id has /// @db.Uuid comment
+      expect(typesContent).toMatch(/AllTypes[\s\S]*?tenant_id:\s*Schema\.UUID/);
+    });
+
+    it('should detect UUID via field name patterns (Strategy 3 - Fallback)', () => {
+      // User.id matches /^id$/ pattern (with columnType for @id @default)
       expect(typesContent).toMatch(
         /_User[\s\S]*?id:\s*columnType\(Schema\.UUID/,
       );
-      // Profile.userId matches _id pattern
+      // Profile.userId matches /_id$/ pattern
       expect(typesContent).toMatch(/_Profile[\s\S]*?userId:\s*Schema\.UUID/);
     });
 

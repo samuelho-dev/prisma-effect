@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { columnType, generated, getSchemas } from '../runtime/kysely-helpers';
+import { columnType, generated, getSchemas } from '../kysely/helpers';
 
 describe('Kysely Helpers', () => {
   describe('columnType', () => {
@@ -11,7 +11,7 @@ describe('Kysely Helpers', () => {
       );
 
       // Verify schema has ColumnTypeId annotation
-      const symbolKey = Symbol.for('effect-kysely/ColumnTypeId');
+      const symbolKey = Symbol.for('/ColumnTypeId');
       expect(symbolKey in schema.ast.annotations).toBe(true);
 
       // Verify AST structure
@@ -26,7 +26,7 @@ describe('Kysely Helpers', () => {
 
       const schema = columnType(selectSchema, insertSchema, updateSchema);
       const annotations = schema.ast.annotations;
-      const symbolKey = Symbol.for('effect-kysely/ColumnTypeId');
+      const symbolKey = Symbol.for('/ColumnTypeId');
       const schemas = annotations[symbolKey] as {
         selectSchema: typeof selectSchema;
         insertSchema: typeof insertSchema;
@@ -45,8 +45,8 @@ describe('Kysely Helpers', () => {
     it('should create a schema that allows undefined during insert', () => {
       const schema = generated(Schema.Number);
 
-      // Verify schema has ColumnTypeId annotation
-      const symbolKey = Symbol.for('effect-kysely/ColumnTypeId');
+      // Verify schema has GeneratedId annotation
+      const symbolKey = Symbol.for('/GeneratedId');
       expect(symbolKey in schema.ast.annotations).toBe(true);
 
       // Verify it returns a schema with proper structure

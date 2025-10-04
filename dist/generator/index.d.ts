@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-export * from '../runtime/kysely-helpers';
-export * from '../runtime/error';
+export * from '../kysely/helpers';
+export declare const generator: void;
 //# sourceMappingURL=index.d.ts.map

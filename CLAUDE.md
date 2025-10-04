@@ -111,22 +111,21 @@ export interface DB {
 ```
 
 ### UUID Detection Strategy
-The generator uses a 4-tier detection strategy (in priority order):
+The generator uses a 3-tier detection strategy (in priority order):
 
 1. **Native Type** (`field.nativeType[0] === 'Uuid'`): Most reliable, from `@db.Uuid`
 2. **Documentation** (`field.documentation?.includes('@db.Uuid')`): From field comments
-3. **Default Value**: Checks for `dbgenerated("gen_random_uuid()")` patterns
-4. **Field Name Patterns**: Regex patterns for `id`, `*_id`, `*_uuid`, `uuid`
+3. **Field Name Patterns** (fallback): Regex patterns for `id`, `*_id`, `*_uuid`, `uuid`
 
-Implemented in `isUuidField()` (src/generator/mappers/uuid-detector.ts:47)
+Implemented in `isUuidField()` (src/generator/mappers/uuid-detector.ts:10)
 
 ### Type Safety Principles
 
 **Zero Type Coercion**: The generator uses exact DMMF types from Prisma with no `as` assertions or unsafe casts.
 
-- `isUuidDefaultValue()` uses inline structural typing and type narrowing (src/generator/mappers/uuid-detector.ts:15)
-- All validation is type-safe with explicit structural checks
-- No reliance on string parsing for type detection
+- All UUID detection uses Prisma's native DMMF type information
+- No custom type guards or structural validation needed
+- Field type annotations (`@db.Uuid`) are the source of truth
 
 **Strict Mode**: Full TypeScript strict mode compliance (tsconfig.json)
 

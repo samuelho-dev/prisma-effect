@@ -6,7 +6,7 @@ import { rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 // Mock prettier
-jest.mock('../generator/utils/templates', () => ({
+jest.mock('../utils/templates', () => ({
   formatCode: jest.fn((code: string) => Promise.resolve(code)),
 }));
 

@@ -1,12 +1,13 @@
 import type { GeneratorOptions } from '@prisma/generator-helper';
 /**
  * Orchestrates the generation of Effect Schema types from Prisma schema
+ * Uses domain-driven generators: Prisma → Effect → Kysely
  */
 export declare class GeneratorOrchestrator {
     private readonly fileManager;
-    private readonly enumGenerator;
-    private readonly typeGenerator;
-    private readonly indexGenerator;
+    private readonly prismaGen;
+    private readonly effectGen;
+    private readonly kyselyGen;
     constructor(options: GeneratorOptions);
     /**
      * Validate and extract output path from generator options

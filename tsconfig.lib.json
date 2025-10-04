@@ -5,16 +5,20 @@
     "declaration": true,
     "types": ["node"]
   },
-  "include": ["src/generator/**/*.ts", "src/runtime/**/*.ts"],
+  "include": [
+    "src/generator/**/*.ts",
+    "src/utils/**/*.ts",
+    "src/prisma/**/*.ts",
+    "src/effect/**/*.ts",
+    "src/kysely/**/*.ts"
+  ],
   "exclude": [
     "jest.config.ts",
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
     "src/**/__tests__/**/*",
-    "src/kysely-helpers.ts",
-    "src/error.ts",
-    "src/schema-builder.ts",
-    "src/templates.ts",
-    "src/generator.ts"
+    "src/generators/**/*",
+    "src/mappers/**/*",
+    "src/orchestrator.ts"
   ]
 }
