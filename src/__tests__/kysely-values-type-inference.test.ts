@@ -25,6 +25,7 @@ import { describe, it, expectTypeOf } from 'vitest';
 import type { InsertObject } from 'kysely';
 import {
   columnType,
+  DateFromInput,
   generated,
   Selectable as PekSelectable,
   Insertable as PekInsertable,
@@ -43,8 +44,8 @@ const User = Schema.Struct({
   id: columnType(UserId, Schema.Never, Schema.Never), // Read-only ID
   email: Schema.String, // Required field
   name: Schema.NullOr(Schema.String), // Nullable field
-  createdAt: generated(Schema.DateFromSelf), // Generated field (optional on insert)
-  updatedAt: generated(Schema.DateFromSelf), // Generated field (optional on insert)
+  createdAt: generated(DateFromInput), // Generated field (optional on insert)
+  updatedAt: generated(DateFromInput), // Generated field (optional on insert)
 });
 type User = typeof User;
 

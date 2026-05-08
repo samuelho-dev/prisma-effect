@@ -25,6 +25,7 @@ import type {
 } from 'kysely';
 import {
   columnType,
+  DateFromInput,
   generated,
   Insertable,
   Selectable,
@@ -41,8 +42,8 @@ const _UserSchema = Schema.Struct({
   id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
   email: Schema.String,
   name: Schema.String,
-  createdAt: generated(Schema.DateFromSelf),
-  updatedAt: generated(Schema.DateFromSelf),
+  createdAt: generated(DateFromInput),
+  updatedAt: generated(DateFromInput),
 });
 
 interface User extends Schema.Schema.Type<typeof _UserSchema> {
@@ -63,7 +64,7 @@ const _PostSchema = Schema.Struct({
   content: Schema.NullOr(Schema.String),
   author_id: Schema.UUID.pipe(Schema.brand('UserId')),
   published: generated(Schema.Boolean),
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(DateFromInput),
 });
 
 interface Post extends Schema.Schema.Type<typeof _PostSchema> {
@@ -84,7 +85,7 @@ const _CommentSchema = Schema.Struct({
   text: Schema.String,
   post_id: Schema.UUID.pipe(Schema.brand('PostId')),
   user_id: Schema.NullOr(Schema.UUID.pipe(Schema.brand('UserId'))),
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(DateFromInput),
 });
 
 interface Comment extends Schema.Schema.Type<typeof _CommentSchema> {
@@ -425,14 +426,14 @@ describe('Type Utilities and Branded IDs', () => {
 
   describe('generated Helper', () => {
     it('should create schema with generated annotation', () => {
-      const timestampField = generated(Schema.DateFromSelf);
+      const timestampField = generated(DateFromInput);
       expect(Schema.isSchema(timestampField)).toBe(true);
     });
 
     it('should work with various types', () => {
       const numberField = generated(Schema.Number);
       const stringField = generated(Schema.String);
-      const dateField = generated(Schema.DateFromSelf);
+      const dateField = generated(DateFromInput);
 
       expect(Schema.isSchema(numberField)).toBe(true);
       expect(Schema.isSchema(stringField)).toBe(true);
@@ -765,7 +766,7 @@ describe('KyselyTable type utility', () => {
       id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
       email: Schema.String,
       name: Schema.String,
-      created_at: generated(Schema.DateFromSelf),
+      created_at: generated(DateFromInput),
     });
 
     interface TestUser extends Schema.Schema.Type<typeof TestUser> {
@@ -796,7 +797,7 @@ describe('Insertable<User> resolution behavior', () => {
       id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
       email: Schema.String,
       name: Schema.String,
-      created_at: generated(Schema.DateFromSelf),
+      created_at: generated(DateFromInput),
     });
 
     // FIXED: Use interface with __schema phantom property (exactly as generated now)

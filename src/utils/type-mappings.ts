@@ -12,11 +12,14 @@
  * Prisma scalar type mapping to Effect Schema types
  * Uses const assertion for type safety
  *
- * Note: DateTime uses Schema.DateFromSelf (not Schema.Date) so that:
+ * DateTime uses `DateFromInput` (this package's dual-input Date schema):
  * - Type = Date (runtime)
- * - Encoded = Date (database)
- * This allows Kysely to work with native Date objects directly.
- * Schema.Date would encode to string, requiring ISO string conversions.
+ * - Encoded = Date | string (accepts native Date from Kysely AND ISO
+ *   string from JSON wire transport)
+ *
+ * Single primitive serves both consumer boundaries — DA layer and RPC
+ * wire — so consumers don't need parallel schemas or boundary-specific
+ * helpers. Mirrors the JsonValue dual-boundary pattern.
  */
 export const PRISMA_TO_EFFECT_SCHEMA = {
   String: 'Schema.String',
@@ -25,7 +28,7 @@ export const PRISMA_TO_EFFECT_SCHEMA = {
   BigInt: 'Schema.BigInt',
   Decimal: 'Schema.String', // For precision
   Boolean: 'Schema.Boolean',
-  DateTime: 'Schema.DateFromSelf', // Native Date type for Kysely compatibility
+  DateTime: 'DateFromInput', // Date | string ↔ Date — dual-boundary safe
   Json: 'JsonValue', // Recursive JSON type — prevents null absorption in NullOr
   Bytes: 'Schema.Uint8Array',
 } as const;

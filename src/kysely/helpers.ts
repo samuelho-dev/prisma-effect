@@ -284,6 +284,38 @@ export const JsonValue: Schema.Schema<JsonValue, JsonValue> = Schema.suspend(
 );
 
 // ============================================================================
+// DateFromInput Schema (dual-input Date — accepts Date instances OR ISO strings)
+// ============================================================================
+
+/**
+ * Dual-input Date schema. Accepts both `Date` instances (from Kysely / pg
+ * driver, in-memory rows) and ISO date strings (from JSON wire transport)
+ * on the Encoded side. Always produces a valid `Date` on the Type side.
+ *
+ * - **Type** = `Date`
+ * - **Encoded** = `Date | string`
+ *
+ * Decode resolution: tries `DateFromSelf` first (cheapest, identity); falls
+ * through to `Schema.Date` for ISO strings. Both reject invalid dates.
+ *
+ * Encode direction: Kysely receives Date instances (the schema's first
+ * union member is identity-encoded), so DA writes work transparently.
+ *
+ * This is the canonical mapping for Prisma DateTime columns because
+ * generated schemas are consumed at TWO boundaries:
+ *  1. Kysely DA layer: native Date instances on both sides.
+ *  2. RPC/HTTP wire: ISO strings on the Encoded side.
+ *
+ * `JsonValue` (above) follows the same dual-boundary discipline by being
+ * Type === Encoded === plain JSON primitives. `DateFromInput` extends the
+ * pattern to a primitive (Date) that JSON cannot natively represent.
+ */
+export const DateFromInput: Schema.Schema<Date, Date | string> = Schema.Union(
+  Schema.DateFromSelf,
+  Schema.Date
+);
+
+// ============================================================================
 // Type Helpers (defined early for use in schema functions)
 // ============================================================================
 

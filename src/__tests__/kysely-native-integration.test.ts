@@ -155,11 +155,16 @@ describe('Kysely Native Integration', () => {
       expect(typesContent).toMatch(/author_id:\s*Schema\.UUID/);
     });
 
-    it('should map DateTime to Schema.DateFromSelf for Effect schemas', async () => {
+    it('should map DateTime to DateFromInput for Effect schemas', async () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
-      // DateTime fields use Schema.DateFromSelf with generated() wrapper
-      expect(typesContent).toContain('generated(Schema.DateFromSelf)');
+      // DateTime fields use DateFromInput (dual-boundary Date schema):
+      // - Encoded = Date | string (Kysely native AND JSON wire)
+      // - Type = Date (runtime)
+      expect(typesContent).toContain('generated(DateFromInput)');
+      expect(typesContent).toContain(
+        'import { columnType, generated, JsonValue, DateFromInput } from "prisma-effect-kysely"'
+      );
     });
 
     it('should map Boolean correctly for Effect schemas', async () => {

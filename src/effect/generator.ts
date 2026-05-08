@@ -84,9 +84,10 @@ export type ${name} = typeof ${name};`;
 
     // Import runtime helpers from prisma-effect-kysely
     // columnType and generated are used for field type annotations
+    // DateFromInput is the dual-boundary Date schema (Date | string ↔ Date)
     const imports = [
       `import { Schema } from "effect";`,
-      `import { columnType, generated, JsonValue } from "prisma-effect-kysely";`,
+      `import { columnType, generated, JsonValue, DateFromInput } from "prisma-effect-kysely";`,
     ];
 
     if (hasEnums) {

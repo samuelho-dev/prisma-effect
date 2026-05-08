@@ -11,7 +11,14 @@
 
 import { Schema } from 'effect';
 import { describe, expect, it } from 'vitest';
-import { columnType, generated, JsonValue, Insertable, Selectable } from '../kysely/helpers';
+import {
+  columnType,
+  DateFromInput,
+  generated,
+  JsonValue,
+  Insertable,
+  Selectable,
+} from '../kysely/helpers';
 
 describe('JsonValue Schema', () => {
   describe('type definition', () => {
@@ -106,7 +113,7 @@ describe('JsonValue Schema', () => {
         name: Schema.String,
         content: Schema.NullOr(JsonValue),
         metadata: Schema.NullOr(JsonValue),
-        created_at: generated(Schema.DateFromSelf),
+        created_at: generated(DateFromInput),
       });
 
       type ProductLike = typeof ProductLike;
@@ -127,14 +134,14 @@ describe('JsonValue Schema', () => {
       expect(hasContent).toBe(true);
       expect(hasMetadata).toBe(true);
 
-      // Runtime: decode a product-like object
+      // Runtime: decode a wire-shape product-like object (ISO string for date)
       const selectSchema = Selectable(ProductLike);
       const product = Schema.decodeUnknownSync(selectSchema)({
         id: 'prod-123',
         name: 'Test Product',
         content: null,
         metadata: { tags: ['audio', 'sample'] },
-        created_at: new Date(),
+        created_at: new Date().toISOString(),
       });
 
       expect(product.name).toBe('Test Product');
