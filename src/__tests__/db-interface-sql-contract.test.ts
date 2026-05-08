@@ -89,23 +89,25 @@ describe('DB interface — SQL contract', () => {
     await fs.rm(outputDir, { recursive: true, force: true });
   });
 
-  it('uses Schema.Schema.Encoded<typeof X> for every DB interface entry', async () => {
+  it('uses Schema.Schema.Type for regular tables and Schema.Schema.Encoded for join tables', async () => {
     const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
-    // Every line inside `export interface DB { ... }` must use Encoded.
     const dbBlock = typesContent.match(/export interface DB\s*\{([\s\S]+?)\n\}/);
     expect(dbBlock).toBeTruthy();
     const dbBody = dbBlock?.[1] ?? '';
 
-    // Catch any lingering Schema.Schema.Type — that would silently break
-    // Kysely queries against any table using Schema.fromKey.
-    expect(dbBody).not.toMatch(/Schema\.Schema\.Type</);
+    // Regular tables: Type preserves branded IDs (string & Brand<...>).
+    // Encoded would strip the brand.
+    expect(dbBody).toMatch(/Product:\s*Schema\.Schema\.Type<typeof Product>/);
+    expect(dbBody).toMatch(/ProductTag:\s*Schema\.Schema\.Type<typeof ProductTag>/);
+    expect(dbBody).toMatch(/User:\s*Schema\.Schema\.Type<typeof User>/);
 
-    // Every entry must use Encoded.
-    const entries = dbBody.split('\n').filter((l) => l.includes(':'));
-    for (const entry of entries) {
-      expect(entry).toMatch(/Schema\.Schema\.Encoded<typeof \w+>/);
-    }
+    // Join tables: Encoded preserves real DB column names (A, B).
+    // Type would expose Schema.fromKey-decoded names that Kysely would
+    // pass to Postgres verbatim → "column does not exist".
+    expect(dbBody).toMatch(
+      /_ProductToProductTag:\s*Schema\.Schema\.Encoded<typeof ProductToProductTag>/
+    );
   });
 
   it('exposes the real Postgres A/B columns for implicit M:N join tables', async () => {

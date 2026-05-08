@@ -72,25 +72,27 @@ export function buildKyselyFieldType(baseFieldType: string, field: DMMF.Field, m
 /**
  * Generate DB interface entry for a model
  *
- * Uses Schema.Schema.Encoded<Model> because the DB interface IS the SQL
- * contract — column names and types must match what Postgres actually
- * sees. Encoded is the on-the-wire / on-disk shape; Type is the decoded
- * runtime shape after `Schema.decode` (which Kysely never runs).
+ * Uses Schema.Schema.Type<Model> for regular tables. The Type side
+ * preserves branded IDs (e.g. `string & Brand<"SellerId">`), which is
+ * what Kysely's Selectable/Insertable/Updateable consumers want.
  *
- * For regular tables: Type === Encoded, behavior unchanged.
+ * Regular tables don't use Schema.fromKey, so `Type === Encoded` for
+ * column names — both shapes have the same key structure. The
+ * difference is at the leaf level: Type preserves brands and refinements,
+ * Encoded strips them. For a SQL contract, brand info is harmless and
+ * useful (Kysely passes it through to consumers).
  *
- * For tables using Schema.fromKey/propertySignature (e.g. Prisma implicit
- * M:N join tables where TS field `product_id` maps to DB column `A`),
- * Encoded preserves the real DB column names so Kysely emits valid SQL.
+ * Join tables are different — see generateJoinTableDBInterfaceEntry —
+ * because they use Schema.fromKey to remap column names, and only
+ * Encoded preserves the real DB column names.
  *
  * ColumnType<S, I, U> brand preserves the __select__/__insert__/__update__
- * phantom properties on both sides (Type and Encoded), so INSERT/UPDATE
- * type inference still works correctly.
+ * phantom properties on both sides, so INSERT/UPDATE inference works.
  */
 export function generateDBInterfaceEntry(model: DMMF.Model) {
   const tableName = model.dbName || model.name;
   const modelName = toPascalCase(model.name);
-  return `  ${tableName}: Schema.Schema.Encoded<typeof ${modelName}>;`;
+  return `  ${tableName}: Schema.Schema.Type<typeof ${modelName}>;`;
 }
 
 /**
