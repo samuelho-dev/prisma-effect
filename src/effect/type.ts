@@ -2,28 +2,7 @@ import type { DMMF } from '@prisma/generator-helper';
 import { isListField, isRequiredField, isUuidField } from '../prisma/type.js';
 import { extractEffectTypeOverride } from '../utils/annotations.js';
 import { toPascalCase } from '../utils/naming.js';
-
-/**
- * Prisma scalar type mapping to Effect Schema types
- * Uses const assertion to avoid type guards
- *
- * Note: DateTime uses Schema.DateFromSelf (not Schema.Date) so that:
- * - Type = Date (runtime)
- * - Encoded = Date (database)
- * This allows Kysely to work with native Date objects directly.
- * Schema.Date would encode to string, requiring ISO string conversions.
- */
-const PRISMA_SCALAR_MAP = {
-  String: 'Schema.String',
-  Int: 'Schema.Number',
-  Float: 'Schema.Number',
-  BigInt: 'Schema.BigInt',
-  Decimal: 'Schema.String', // For precision
-  Boolean: 'Schema.Boolean',
-  DateTime: 'Schema.DateFromSelf', // Native Date type for Kysely compatibility
-  Json: 'JsonValue', // Recursive JSON type — prevents null absorption in NullOr
-  Bytes: 'Schema.Uint8Array',
-} as const;
+import { PRISMA_TO_EFFECT_SCHEMA as PRISMA_SCALAR_MAP } from '../utils/type-mappings.js';
 
 /**
  * Map Prisma field type to Effect Schema type

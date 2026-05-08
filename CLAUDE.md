@@ -62,7 +62,7 @@ export type UserId = typeof UserId.Type;
 export const User = Schema.Struct({
   id: columnType(Schema.UUID, Schema.Never, Schema.Never),
   email: Schema.String,
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(DateFromInput),
 });
 export type User = typeof User;
 
@@ -97,17 +97,19 @@ Prisma stores `A`/`B` columns; we emit semantic snake_case fields via `Schema.pr
 
 ## Type mappings
 
-| Prisma      | Effect                | Notes              |
-| ----------- | --------------------- | ------------------ |
-| String      | `Schema.String`       | UUID → `Schema.UUID` |
-| Int / Float | `Schema.Number`       |                    |
-| BigInt      | `Schema.BigInt`       |                    |
-| Decimal     | `Schema.String`       | precision          |
-| Boolean     | `Schema.Boolean`      |                    |
-| DateTime    | `Schema.DateFromSelf` |                    |
-| Json        | `Schema.Unknown`      |                    |
-| Bytes       | `Schema.Uint8Array`   |                    |
-| Enum        | imported enum schema  |                    |
+| Prisma      | Effect                | Notes                                  |
+| ----------- | --------------------- | -------------------------------------- |
+| String      | `Schema.String`       | UUID → `Schema.UUID`                   |
+| Int / Float | `Schema.Number`       |                                        |
+| BigInt      | `Schema.BigInt`       |                                        |
+| Decimal     | `Schema.String`       | precision                              |
+| Boolean     | `Schema.Boolean`      |                                        |
+| DateTime    | `DateFromInput`       | dual-input: `Date \| string` ↔ `Date`  |
+| Json        | `JsonValue`           | recursive JSON, wire-safe              |
+| Bytes       | `Schema.Uint8Array`   |                                        |
+| Enum        | imported enum schema  |                                        |
+
+`DateFromInput` is `Schema.Union(Schema.DateFromSelf, Schema.Date)` — accepts native `Date` (Kysely DA boundary) and ISO strings (RPC/HTTP wire boundary). Encode picks the first union member (DateFromSelf identity) so Kysely-bound paths still receive Date instances.
 
 Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
@@ -130,7 +132,7 @@ Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
 ## Working in this repo
 
-- Run `bun run test` (280 tests) to baseline before changes
+- Run `bun run test` to baseline before changes
 - Generator must be rebuilt before `prisma generate` picks up changes
 - Test fixtures: `src/__tests__/fixtures/test.prisma`
 - Generated headers include timestamp + edit warning

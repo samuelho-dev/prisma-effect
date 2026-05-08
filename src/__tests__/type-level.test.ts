@@ -1,7 +1,14 @@
 import { Schema } from 'effect';
 import * as AST from 'effect/SchemaAST';
 import { describe, it, expect, expectTypeOf } from 'vitest';
-import { columnType, generated, Insertable, Updateable, Selectable } from '../kysely/helpers';
+import {
+  columnType,
+  DateFromInput,
+  generated,
+  Insertable,
+  Updateable,
+  Selectable,
+} from '../kysely/helpers';
 
 const getPropertyNames = (schema: Schema.Schema<unknown, unknown>) => {
   const ast = schema.ast;
@@ -11,7 +18,7 @@ const getPropertyNames = (schema: Schema.Schema<unknown, unknown>) => {
 
 const User = Schema.Struct({
   id: columnType(Schema.UUID, Schema.Never, Schema.Never),
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(DateFromInput),
   name: Schema.String,
   email: Schema.String,
 });

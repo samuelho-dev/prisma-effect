@@ -9,6 +9,7 @@ import { Schema } from 'effect';
 import { describe, it, expect } from 'vitest';
 import {
   columnType,
+  DateFromInput,
   generated,
   Updateable,
   Insertable,
@@ -25,7 +26,7 @@ const Payment = Schema.Struct({
   id: columnType(Schema.UUID.pipe(Schema.brand('PaymentId')), Schema.Never, Schema.Never),
   amount: generated(Schema.Number),
   status: generated(PaymentStatus),
-  created_at: generated(Schema.DateFromSelf),
+  created_at: generated(DateFromInput),
 });
 
 type Payment = typeof Payment;

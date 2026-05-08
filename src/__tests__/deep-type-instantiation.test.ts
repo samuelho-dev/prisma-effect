@@ -34,6 +34,7 @@ import type {
 import { describe, it, expectTypeOf } from 'vitest';
 import {
   columnType,
+  DateFromInput,
   generated,
   JsonValue,
   type ColumnType,
@@ -75,19 +76,19 @@ const Seller = Schema.Struct({
   payout_schedule: generated(Schema.String),
   minimum_payout_threshold: generated(Schema.Number),
   verification_fields_needed: generated(Schema.Array(Schema.String)),
-  activated_at: Schema.NullOr(Schema.DateFromSelf),
+  activated_at: Schema.NullOr(DateFromInput),
   banned_reason: Schema.NullOr(Schema.String),
   business_type: Schema.NullOr(Schema.String),
   card_payments_capability: Schema.NullOr(Schema.String),
   flagged_reason: Schema.NullOr(Schema.String),
-  last_verification_attempt: Schema.NullOr(Schema.DateFromSelf),
+  last_verification_attempt: Schema.NullOr(DateFromInput),
   stripe_account_id: Schema.NullOr(Schema.UUID),
-  tos_acceptance_date: Schema.NullOr(Schema.DateFromSelf),
+  tos_acceptance_date: Schema.NullOr(DateFromInput),
   transfers_capability: Schema.NullOr(Schema.String),
-  verification_due_by: Schema.NullOr(Schema.DateFromSelf),
+  verification_due_by: Schema.NullOr(DateFromInput),
   verification_status: Schema.NullOr(Schema.String),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  created_at: generated(DateFromInput),
+  updated_at: generated(DateFromInput),
 });
 type SellerType = Schema.Schema.Type<typeof Seller>;
 
@@ -110,15 +111,15 @@ const Product = Schema.Struct({
   is_subscription_only: generated(Schema.Boolean),
   content: Schema.NullOr(Schema.String),
   current_version_id: Schema.NullOr(Schema.UUID),
-  end_at: Schema.NullOr(Schema.DateFromSelf),
+  end_at: Schema.NullOr(DateFromInput),
   max_quantity: Schema.NullOr(Schema.Number),
-  start_at: Schema.NullOr(Schema.DateFromSelf),
+  start_at: Schema.NullOr(DateFromInput),
   subcategory_id: Schema.NullOr(Schema.UUID),
   suggested_price: Schema.NullOr(Schema.Number),
   thumbnail: Schema.NullOr(Schema.String),
   category_id: Schema.NullOr(Schema.UUID),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  created_at: generated(DateFromInput),
+  updated_at: generated(DateFromInput),
 });
 type ProductType = Schema.Schema.Type<typeof Product>;
 
@@ -137,11 +138,11 @@ const Order = Schema.Struct({
   email: Schema.NullOr(Schema.String),
   notes: Schema.NullOr(Schema.String),
   stripe_payment_intent_id: Schema.NullOr(Schema.UUID),
-  completed_at: Schema.NullOr(Schema.DateFromSelf),
-  cancelled_at: Schema.NullOr(Schema.DateFromSelf),
-  refunded_at: Schema.NullOr(Schema.DateFromSelf),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  completed_at: Schema.NullOr(DateFromInput),
+  cancelled_at: Schema.NullOr(DateFromInput),
+  refunded_at: Schema.NullOr(DateFromInput),
+  created_at: generated(DateFromInput),
+  updated_at: generated(DateFromInput),
 });
 type OrderType = Schema.Schema.Type<typeof Order>;
 
@@ -159,9 +160,9 @@ const Payment = Schema.Struct({
   failure_code: Schema.NullOr(Schema.String),
   failure_message: Schema.NullOr(Schema.String),
   refund_amount: Schema.NullOr(Schema.Number),
-  refunded_at: Schema.NullOr(Schema.DateFromSelf),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  refunded_at: Schema.NullOr(DateFromInput),
+  created_at: generated(DateFromInput),
+  updated_at: generated(DateFromInput),
 });
 type PaymentType = Schema.Schema.Type<typeof Payment>;
 
@@ -321,8 +322,8 @@ const PaymentWithJson = Schema.Struct({
   last_payment_error: Schema.NullOr(columnType(JsonValue, JsonValue, JsonValue)),
   metadata: Schema.NullOr(columnType(JsonValue, JsonValue, JsonValue)),
   raw_response: columnType(JsonValue, JsonValue, JsonValue),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  created_at: generated(DateFromInput),
+  updated_at: generated(DateFromInput),
 });
 
 interface JsonTestDB {

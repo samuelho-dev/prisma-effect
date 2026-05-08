@@ -27,7 +27,7 @@ Three files: `enums.ts`, `types.ts`, `index.ts`.
 
 ```typescript
 import { Schema } from "effect";
-import { columnType, generated, Selectable } from "prisma-effect-kysely";
+import { columnType, DateFromInput, generated, Selectable } from "prisma-effect-kysely";
 
 // Branded ID
 export const UserId = Schema.UUID.pipe(Schema.brand("UserId"));
@@ -37,7 +37,7 @@ export type UserId = typeof UserId.Type;
 export const User = Schema.Struct({
   id: columnType(Schema.UUID, Schema.Never, Schema.Never),
   email: Schema.String,
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(DateFromInput),
 });
 export type User = typeof User;
 
@@ -80,13 +80,13 @@ Schema names are PascalCase regardless of Prisma model name (`session_preference
 | BigInt      | `Schema.BigInt`       |
 | Decimal     | `Schema.String`       |
 | Boolean     | `Schema.Boolean`      |
-| DateTime    | `Schema.DateFromSelf` |
-| Json        | `Schema.Unknown`      |
+| DateTime    | `DateFromInput`       |
+| Json        | `JsonValue`           |
 | Bytes       | `Schema.Uint8Array`   |
 | Enum        | `Schema.Literal(...)` |
 | UUID        | `Schema.UUID`         |
 
-Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
+Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`. `DateFromInput` accepts `Date | string` on the encoded side; `JsonValue` is `Schema<JsonValue, JsonValue>`. Both are wire-safe (`JSON.parse` output decodes cleanly).
 
 ## UUID Detection
 

@@ -10,7 +10,14 @@
 
 import { Schema } from 'effect';
 import { describe, it, expectTypeOf } from 'vitest';
-import { columnType, generated, Insertable, VariantTypeId, VariantMarker } from '../kysely/helpers';
+import {
+  columnType,
+  DateFromInput,
+  generated,
+  Insertable,
+  VariantTypeId,
+  VariantMarker,
+} from '../kysely/helpers';
 
 describe('Brand Preservation Through Type System', () => {
   describe('Step 1: columnType return type', () => {
@@ -33,9 +40,9 @@ describe('Brand Preservation Through Type System', () => {
 
     it('should preserve VariantMarker with different insert/update types', () => {
       const timestampField = columnType(
-        Schema.DateFromSelf,
-        Schema.optional(Schema.DateFromSelf),
-        Schema.DateFromSelf
+        DateFromInput,
+        Schema.optional(DateFromInput),
+        DateFromInput
       );
 
       type TimestampType = Schema.Schema.Type<typeof timestampField>;
@@ -67,7 +74,7 @@ describe('Brand Preservation Through Type System', () => {
     it('should preserve VariantMarker on generated fields', () => {
       const TestModel = Schema.Struct({
         id: columnType(Schema.Number.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
-        createdAt: generated(Schema.DateFromSelf),
+        createdAt: generated(DateFromInput),
       });
 
       type ModelType = Schema.Schema.Type<typeof TestModel>;
@@ -105,8 +112,8 @@ describe('Brand Preservation Through Type System', () => {
       const TestModel = Schema.Struct({
         id: columnType(Schema.Number.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
         name: Schema.String,
-        createdAt: generated(Schema.DateFromSelf),
-        updatedAt: generated(Schema.DateFromSelf),
+        createdAt: generated(DateFromInput),
+        updatedAt: generated(DateFromInput),
       });
 
       type TestInsert = Insertable<typeof TestModel>;
@@ -130,7 +137,7 @@ describe('Brand Preservation Through Type System', () => {
       id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
       email: Schema.String,
       name: Schema.String,
-      createdAt: generated(Schema.DateFromSelf),
+      createdAt: generated(DateFromInput),
     });
     type User = typeof User;
 
@@ -184,7 +191,7 @@ describe('Brand Preservation Through Type System', () => {
 
     it('should correctly extract insert type from generated field', () => {
       const TestModel = Schema.Struct({
-        createdAt: generated(Schema.DateFromSelf),
+        createdAt: generated(DateFromInput),
       });
 
       type ModelType = Schema.Schema.Type<typeof TestModel>;

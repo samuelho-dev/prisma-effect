@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Schema } from 'effect';
-import { columnType, generated, Insertable, Updateable } from '../kysely/helpers';
+import { columnType, DateFromInput, generated, Insertable, Updateable } from '../kysely/helpers';
 import type { Insertable as InsertableType } from '../kysely/helpers';
 
 /**
@@ -23,31 +23,31 @@ describe('TS2589 regression: deep type instantiation', () => {
 
   // Realistic seller schema with 27 fields (matching production schema)
   const Seller = Schema.Struct({
-    activated_at: Schema.NullOr(Schema.DateFromSelf),
+    activated_at: Schema.NullOr(DateFromInput),
     banned_reason: Schema.NullOr(Schema.String),
     business_profile: Schema.NullOr(Schema.Unknown),
     business_type: Schema.NullOr(Schema.String),
     capabilities: Schema.NullOr(Schema.Unknown),
     card_payments_capability: Schema.NullOr(Schema.String),
     charges_enabled: generated(Schema.Boolean),
-    created_at: generated(Schema.DateFromSelf),
+    created_at: generated(DateFromInput),
     default_currency: generated(Schema.String),
     details_submitted: generated(Schema.Boolean),
     external_accounts: Schema.NullOr(Schema.Unknown),
     flagged_reason: Schema.NullOr(Schema.String),
     id: columnType(SellerId, Schema.Never, Schema.Never),
-    last_verification_attempt: Schema.NullOr(Schema.DateFromSelf),
+    last_verification_attempt: Schema.NullOr(DateFromInput),
     minimum_payout_threshold: generated(Schema.Number),
     payout_schedule: generated(PayoutSchedule),
     payouts_enabled: generated(Schema.Boolean),
     requirements: Schema.NullOr(Schema.Unknown),
     status: generated(SellerStatus),
     stripe_account_id: Schema.NullOr(Schema.UUID),
-    tos_acceptance_date: Schema.NullOr(Schema.DateFromSelf),
+    tos_acceptance_date: Schema.NullOr(DateFromInput),
     transfers_capability: Schema.NullOr(Schema.String),
-    updated_at: generated(Schema.DateFromSelf),
+    updated_at: generated(DateFromInput),
     user_id: UserId,
-    verification_due_by: Schema.NullOr(Schema.DateFromSelf),
+    verification_due_by: Schema.NullOr(DateFromInput),
     verification_fields_needed: generated(Schema.Array(Schema.String)),
     verification_status: Schema.NullOr(Schema.String),
   });
