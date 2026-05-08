@@ -189,13 +189,13 @@ describe('Code Generation - E2E and Validation', () => {
 
     it('should generate DB interface with Schema.Schema.Type pattern', () => {
       expect(typesContent).toContain('export interface DB');
-      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
 
-      // Should use Schema.Schema.Type<typeof Model> to preserve phantom properties
+      // Should use Schema.Schema.Encoded<typeof Model> to preserve phantom properties
       const dbMatch = typesContent.match(/export interface DB\s*{([^}]+)}/s);
       expect(dbMatch).toBeTruthy();
       const dbContent = dbMatch?.[1];
-      expect(dbContent).not.toMatch(/Schema\.Schema\.Encoded/);
+      expect(dbContent).not.toMatch(/Schema\.Schema\.Type/);
     });
 
     it('should re-export from index', () => {
@@ -278,9 +278,9 @@ describe('Code Generation - E2E and Validation', () => {
 
     it('should use @@map for table names in DB interface', () => {
       // CompositeIdModel has @@map("composite_id_table")
-      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
+      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
       expect(typesContent).toMatch(
-        /composite_id_table:\s*Schema\.Schema\.Type<typeof CompositeIdModel>/
+        /composite_id_table:\s*Schema\.Schema\.Encoded<typeof CompositeIdModel>/
       );
     });
   });
@@ -440,8 +440,8 @@ describe('Code Generation - E2E and Validation', () => {
 
       const dbContent = dbMatch?.[1];
 
-      // Should have entries for models using Schema.Schema.Type<typeof Model> pattern
-      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      // Should have entries for models using Schema.Schema.Encoded<typeof Model> pattern
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
     });
   });
 
