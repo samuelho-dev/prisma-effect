@@ -1,0 +1,38 @@
+# CodeRabbit configuration
+# Reference: https://docs.coderabbit.ai/reference/configuration
+#
+# Goal: make CodeRabbit a real merge gate (formal PR review, not just a comment),
+# so reviewers see explicit Approve/Request-Changes signal in `gh pr view --json
+# reviewDecision` and branch protection's "Require approvals" can rely on it.
+
+reviews:
+  profile: chill
+  # Post a formal "Approve" or "Request Changes" review (not just a walkthrough
+  # comment). Required for branch protection's "Require approvals" to pick up
+  # CodeRabbit's verdict. See:
+  # https://docs.coderabbit.ai/reference/configuration
+  request_changes_workflow: true
+
+  high_level_summary: true
+  poem: false
+
+  # Pre-merge checks: validate PR hygiene + docstring coverage. `error` mode
+  # blocks merge when paired with branch protection + request_changes_workflow.
+  pre_merge_checks:
+    title:
+      mode: warning
+    description:
+      mode: warning
+    docstrings:
+      mode: warning
+      threshold: 70
+
+  # Auto-review behaviour
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+chat:
+  auto_reply: true
