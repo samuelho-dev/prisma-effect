@@ -79,9 +79,9 @@ describe('Kysely Integration - Functional Tests', () => {
     });
 
     it('should generate DB interface with Schema.Schema.Type pattern', () => {
-      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
+      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
       expect(typesContent).toContain('export interface DB');
-      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
     });
 
     it('should define DB as interface not type', () => {
@@ -112,9 +112,9 @@ describe('Kysely Integration - Functional Tests', () => {
 
     it('should use @@map for table names in DB interface', () => {
       // CompositeIdModel has @@map("composite_id_table")
-      // DB interface uses mapped table name with Schema.Schema.Type<typeof Model>
+      // DB interface uses mapped table name with Schema.Schema.Encoded<typeof Model>
       expect(typesContent).toMatch(
-        /composite_id_table:\s*Schema\.Schema\.Type<typeof CompositeIdModel>/
+        /composite_id_table:\s*Schema\.Schema\.Encoded<typeof CompositeIdModel>/
       );
     });
   });
@@ -152,8 +152,8 @@ describe('Kysely Integration - Functional Tests', () => {
 
       const dbContent = dbMatch?.[1];
 
-      // Should have entries for each model using Schema.Schema.Type<typeof Model>
-      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      // Should have entries for each model using Schema.Schema.Encoded<typeof Model>
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
     });
   });
 
@@ -172,29 +172,31 @@ describe('Kysely Integration - Functional Tests', () => {
     });
 
     it('should use Schema.Schema.Type pattern for type safety', () => {
-      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
+      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
       // Consumers use Insertable<User>, Selectable<User>, Updateable<User>
-      expect(typesContent).toMatch(/Schema\.Schema\.Type<typeof \w+>/);
+      expect(typesContent).toMatch(/Schema\.Schema\.Encoded<typeof \w+>/);
     });
 
-    it('should generate DB interface with Schema.Schema.Type pattern', () => {
-      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
+    it('should generate DB interface with Schema.Schema.Encoded pattern', () => {
+      // DB interface uses Schema.Schema.Encoded<typeof Model> so column names
+      // match the real DB (Encoded side). Type would expose Schema.fromKey-mapped
+      // names that Kysely would pass to SQL verbatim, breaking junction tables.
       const dbMatch = typesContent.match(/export interface DB\s*{([^}]+)}/s);
       expect(dbMatch).toBeTruthy();
 
       const dbContent = dbMatch?.[1];
 
-      // Should use Schema.Schema.Type<typeof Model> pattern
-      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      // Should use Schema.Schema.Encoded<typeof Model> pattern
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
 
-      // Should NOT use Schema.Schema.Encoded inline
-      expect(dbContent).not.toMatch(/Schema\.Schema\.Encoded/);
+      // Should NOT use Schema.Schema.Type — that would expose decoded names
+      expect(dbContent).not.toMatch(/Schema\.Schema\.Type/);
     });
 
-    it('should support junction table queries with Schema.Schema.Type pattern', () => {
-      // Junction tables (implicit M2M) should be in DB interface
-      // Example: _product_tags, _CategoryToPost
-      expect(typesContent).toMatch(/_product_tags:\s*Schema\.Schema\.Type<typeof \w+>/);
+    it('should support junction table queries with Schema.Schema.Encoded pattern', () => {
+      // Junction tables (implicit M2M) must use Encoded so DB columns A/B
+      // are exposed to Kysely (not the Schema.fromKey-decoded names).
+      expect(typesContent).toMatch(/_product_tags:\s*Schema\.Schema\.Encoded<typeof \w+>/);
     });
   });
 
@@ -273,8 +275,8 @@ describe('Kysely Integration - Functional Tests', () => {
 
       const dbContent = dbMatch?.[1];
 
-      // Should have table entries with Schema.Schema.Type<typeof Model>
-      expect(dbContent).toMatch(/\w+:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      // Should have table entries with Schema.Schema.Encoded<typeof Model>
+      expect(dbContent).toMatch(/\w+:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
     });
 
     it('should generate schemas compatible with Effect runtime', () => {

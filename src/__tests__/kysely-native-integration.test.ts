@@ -90,13 +90,13 @@ describe('Kysely Native Integration', () => {
   });
 
   describe('DB Interface with Schema.Schema.Type Pattern', () => {
-    it('should use Schema.Schema.Type<typeof Model> in DB interface', async () => {
+    it('should use Schema.Schema.Encoded<typeof Model> in DB interface', async () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
-      // DB interface should use Schema.Schema.Type<typeof Model> to preserve phantom properties
+      // DB interface should use Schema.Schema.Encoded<typeof Model> to preserve phantom properties
       expect(typesContent).toMatch(/export interface DB \{/);
-      expect(typesContent).toMatch(/User:\s*Schema\.Schema\.Type<typeof User>/);
-      expect(typesContent).toMatch(/Post:\s*Schema\.Schema\.Type<typeof Post>/);
+      expect(typesContent).toMatch(/User:\s*Schema\.Schema\.Encoded<typeof User>/);
+      expect(typesContent).toMatch(/Post:\s*Schema\.Schema\.Encoded<typeof Post>/);
 
       // Should NOT use SelectEncoded in DB interface
       expect(typesContent).not.toMatch(/User:\s*UserSelectEncoded/);
@@ -109,8 +109,8 @@ describe('Kysely Native Integration', () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
       // Package provides Insertable, Selectable, Updateable utilities
-      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
-      expect(typesContent).toMatch(/Schema\.Schema\.Type<typeof User>/);
+      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
+      expect(typesContent).toMatch(/Schema\.Schema\.Encoded<typeof User>/);
 
       // Effect schemas use columnType for read-only ID fields
       expect(typesContent).toContain('columnType(');

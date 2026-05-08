@@ -228,8 +228,8 @@ describe('Multi-Domain Generation', () => {
 
       // Verify types.ts contains both models
       const typesContent = fs.readFileSync(path.join(testOutputDir, 'types.ts'), 'utf-8');
-      expect(typesContent).toContain('Schema.Schema.Type<typeof User>');
-      expect(typesContent).toContain('Schema.Schema.Type<typeof Product>');
+      expect(typesContent).toContain('Schema.Schema.Encoded<typeof User>');
+      expect(typesContent).toContain('Schema.Schema.Encoded<typeof Product>');
     });
   });
 
@@ -296,16 +296,16 @@ describe('Multi-Domain Generation', () => {
         path.join(testOutputDir, 'user/src/generated/types.ts'),
         'utf-8'
       );
-      expect(userTypesContent).toContain('Schema.Schema.Type<typeof User>');
-      expect(userTypesContent).not.toContain('Schema.Schema.Type<typeof Product>');
+      expect(userTypesContent).toContain('Schema.Schema.Encoded<typeof User>');
+      expect(userTypesContent).not.toContain('Schema.Schema.Encoded<typeof Product>');
 
       // Verify product domain only has Product model
       const productTypesContent = fs.readFileSync(
         path.join(testOutputDir, 'product/src/generated/types.ts'),
         'utf-8'
       );
-      expect(productTypesContent).toContain('Schema.Schema.Type<typeof Product>');
-      expect(productTypesContent).not.toContain('Schema.Schema.Type<typeof User>');
+      expect(productTypesContent).toContain('Schema.Schema.Encoded<typeof Product>');
+      expect(productTypesContent).not.toContain('Schema.Schema.Encoded<typeof User>');
     });
   });
 });

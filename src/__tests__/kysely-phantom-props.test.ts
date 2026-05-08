@@ -122,12 +122,12 @@ describe('Kysely Phantom Property Compatibility', () => {
     it('should work with Schema.Schema.Type pattern used in DB interface', () => {
       // This simulates how the generator produces DB interface:
       // export interface DB {
-      //   User: Schema.Schema.Type<typeof User>;
+      //   User: Schema.Schema.Encoded<typeof User>;
       // }
       //
       // Where User schema has fields with ColumnType and Generated wrappers
 
-      // Simulated row type (what Schema.Schema.Type<typeof User> produces)
+      // Simulated row type (what Schema.Schema.Encoded<typeof User> produces)
       interface UserRow {
         id: ColumnType<string, never, never>;
         email: string;
