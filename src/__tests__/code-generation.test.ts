@@ -187,15 +187,20 @@ describe('Code Generation - E2E and Validation', () => {
       expect(typesContent).not.toMatch(/export type UserSelectEncoded\s*=/);
     });
 
-    it('should generate DB interface with Schema.Schema.Type pattern', () => {
+    it('should generate DB interface using Type for regular tables and Encoded for join tables', () => {
       expect(typesContent).toContain('export interface DB');
-      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
 
-      // Should use Schema.Schema.Encoded<typeof Model> to preserve phantom properties
       const dbMatch = typesContent.match(/export interface DB\s*{([^}]+)}/s);
       expect(dbMatch).toBeTruthy();
       const dbContent = dbMatch?.[1];
-      expect(dbContent).not.toMatch(/Schema\.Schema\.Type/);
+
+      // Regular tables: Type preserves branded IDs and ColumnType phantoms.
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+
+      // Join tables (start with `_`): Encoded preserves real DB column names.
+      // For schemas without join tables this matcher won't apply — but the
+      // fixture in this test suite includes implicit M2M relations, so it does.
+      expect(dbContent).toMatch(/_\w+:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
     });
 
     it('should re-export from index', () => {
@@ -278,9 +283,9 @@ describe('Code Generation - E2E and Validation', () => {
 
     it('should use @@map for table names in DB interface', () => {
       // CompositeIdModel has @@map("composite_id_table")
-      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
+      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
       expect(typesContent).toMatch(
-        /composite_id_table:\s*Schema\.Schema\.Encoded<typeof CompositeIdModel>/
+        /composite_id_table:\s*Schema.Schema.Type<typeof CompositeIdModel>/
       );
     });
   });
@@ -440,8 +445,8 @@ describe('Code Generation - E2E and Validation', () => {
 
       const dbContent = dbMatch?.[1];
 
-      // Should have entries for models using Schema.Schema.Encoded<typeof Model> pattern
-      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
+      // Should have entries for models using Schema.Schema.Type<typeof Model> pattern
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
     });
   });
 

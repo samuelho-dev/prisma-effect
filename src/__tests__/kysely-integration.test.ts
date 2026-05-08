@@ -79,9 +79,9 @@ describe('Kysely Integration - Functional Tests', () => {
     });
 
     it('should generate DB interface with Schema.Schema.Type pattern', () => {
-      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
+      // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
       expect(typesContent).toContain('export interface DB');
-      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
+      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
     });
 
     it('should define DB as interface not type', () => {
@@ -112,9 +112,9 @@ describe('Kysely Integration - Functional Tests', () => {
 
     it('should use @@map for table names in DB interface', () => {
       // CompositeIdModel has @@map("composite_id_table")
-      // DB interface uses mapped table name with Schema.Schema.Encoded<typeof Model>
+      // DB interface uses mapped table name with Schema.Schema.Type<typeof Model>
       expect(typesContent).toMatch(
-        /composite_id_table:\s*Schema\.Schema\.Encoded<typeof CompositeIdModel>/
+        /composite_id_table:\s*Schema.Schema.Type<typeof CompositeIdModel>/
       );
     });
   });
@@ -152,8 +152,8 @@ describe('Kysely Integration - Functional Tests', () => {
 
       const dbContent = dbMatch?.[1];
 
-      // Should have entries for each model using Schema.Schema.Encoded<typeof Model>
-      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
+      // Should have entries for each model using Schema.Schema.Type<typeof Model>
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
     });
   });
 
@@ -172,25 +172,23 @@ describe('Kysely Integration - Functional Tests', () => {
     });
 
     it('should use Schema.Schema.Type pattern for type safety', () => {
-      // DB interface uses Schema.Schema.Encoded<typeof Model> to preserve phantom properties
-      // Consumers use Insertable<User>, Selectable<User>, Updateable<User>
-      expect(typesContent).toMatch(/Schema\.Schema\.Encoded<typeof \w+>/);
+      // Regular tables use Schema.Schema.Type to preserve branded IDs
+      // and phantom Insertable/Updateable properties.
+      expect(typesContent).toMatch(/Schema\.Schema\.Type<typeof \w+>/);
     });
 
-    it('should generate DB interface with Schema.Schema.Encoded pattern', () => {
-      // DB interface uses Schema.Schema.Encoded<typeof Model> so column names
-      // match the real DB (Encoded side). Type would expose Schema.fromKey-mapped
-      // names that Kysely would pass to SQL verbatim, breaking junction tables.
+    it('should generate DB interface using Type for regular tables, Encoded for join tables', () => {
       const dbMatch = typesContent.match(/export interface DB\s*{([^}]+)}/s);
       expect(dbMatch).toBeTruthy();
 
       const dbContent = dbMatch?.[1];
 
-      // Should use Schema.Schema.Encoded<typeof Model> pattern
-      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
+      // Regular tables: Type preserves branded IDs and refinements.
+      expect(dbContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
 
-      // Should NOT use Schema.Schema.Type — that would expose decoded names
-      expect(dbContent).not.toMatch(/Schema\.Schema\.Type/);
+      // Join tables (start with `_`): Encoded preserves real DB column names
+      // so Kysely's TS interface matches the SQL columns Postgres expects.
+      expect(dbContent).toMatch(/_\w+:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
     });
 
     it('should support junction table queries with Schema.Schema.Encoded pattern', () => {
@@ -275,8 +273,8 @@ describe('Kysely Integration - Functional Tests', () => {
 
       const dbContent = dbMatch?.[1];
 
-      // Should have table entries with Schema.Schema.Encoded<typeof Model>
-      expect(dbContent).toMatch(/\w+:\s*Schema\.Schema\.Encoded<typeof \w+>;/);
+      // Should have table entries with Schema.Schema.Type<typeof Model>
+      expect(dbContent).toMatch(/\w+:\s*Schema\.Schema\.Type<typeof \w+>;/);
     });
 
     it('should generate schemas compatible with Effect runtime', () => {
