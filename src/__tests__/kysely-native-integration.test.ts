@@ -155,15 +155,18 @@ describe('Kysely Native Integration', () => {
       expect(typesContent).toMatch(/author_id:\s*Schema\.UUID/);
     });
 
-    it('should map DateTime to DateFromInput for Effect schemas', async () => {
+    it('should map DateTime to Schema.DateFromSelf for Effect schemas', async () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
-      // DateTime fields use DateFromInput (dual-boundary Date schema):
-      // - Encoded = Date | string (Kysely native AND JSON wire)
-      // - Type = Date (runtime)
-      expect(typesContent).toContain('generated(DateFromInput)');
+      // DateTime fields use Schema.DateFromSelf (Type === Encoded === Date) —
+      // matches Prisma's contract that DateTime values are native Date instances
+      // and Kysely's idiomatic ColumnType<Date, ...> pattern.
+      expect(typesContent).toContain('generated(Schema.DateFromSelf)');
+
+      // Codegen no longer auto-imports DateFromInput. The Union schema is still
+      // exported from the package for consumers that explicitly want it.
       expect(typesContent).toContain(
-        'import { columnType, generated, JsonValue, DateFromInput } from "prisma-effect-kysely"'
+        'import { columnType, generated, JsonValue } from "prisma-effect-kysely"'
       );
     });
 

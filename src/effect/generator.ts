@@ -82,12 +82,13 @@ export type ${name} = typeof ${name};`;
   generateTypesHeader(hasEnums: boolean) {
     const header = generateFileHeader();
 
-    // Import runtime helpers from prisma-effect-kysely
-    // columnType and generated are used for field type annotations
-    // DateFromInput is the dual-boundary Date schema (Date | string ↔ Date)
+    // Import runtime helpers from prisma-effect-kysely.
+    // DateTime fields use Schema.DateFromSelf (Date ↔ Date), matching
+    // Prisma's contract that DateTime values are native Date instances.
+    // Decode through a Schema.Date contract schema at JSON wire boundaries.
     const imports = [
       `import { Schema } from "effect";`,
-      `import { columnType, generated, JsonValue, DateFromInput } from "prisma-effect-kysely";`,
+      `import { columnType, generated, JsonValue } from "prisma-effect-kysely";`,
     ];
 
     if (hasEnums) {
