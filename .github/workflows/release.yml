@@ -2,7 +2,12 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    # `main` ships stable releases to the `latest` dist-tag.
+    # `release/next` ships pre-releases — it carries `.changeset/pre.json`
+    # (changesets pre mode, tag `next`), so `changeset publish` auto-routes
+    # those versions (e.g. 6.0.0-next.0) to the `next` dist-tag instead of
+    # `latest`. Stable 5.x patches can keep flowing from `main` independently.
+    branches: [main, release/next]
   workflow_dispatch:
 
 concurrency:
@@ -37,58 +42,21 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Create Release PR
-        id: changesets
+      # The changesets action handles both phases:
+      # - When changesets exist: opens/updates the "Version Packages" PR
+      #   (running `changeset version`). On `release/next` (pre mode) this yields
+      #   `X.Y.Z-next.N`; on `main` it yields normal versions.
+      # - When the version PR is merged (no changesets remain): runs the `publish`
+      #   command. `changeset publish` auto-routes the npm dist-tag — pre-release
+      #   versions go to the pre tag (`next`), stable versions go to `latest` —
+      #   and pushes the matching git tags. `prepublishOnly` runs the lint/
+      #   typecheck/test/build gate on the underlying `npm publish`.
+      - name: Version or Publish
         uses: changesets/action@v1
         with:
           version: bun run changeset:version
+          publish: bun run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to npm
-        if: steps.changesets.outputs.hasChangesets == 'false'
-        run: |
-          # Check if package needs publishing
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          PUBLISHED_VERSION=$(npm view prisma-effect-kysely version 2>/dev/null || echo "")
-
-          if [ "$PUBLISHED_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "Publishing prisma-effect-kysely@${PACKAGE_VERSION}"
-            bun run prepublishOnly
-            npm publish --access public --provenance
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Version ${PACKAGE_VERSION} already published, skipping"
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-        id: publish
-        env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create Git Tags and GitHub Releases
-        if: steps.publish.outputs.published == 'true'
-        run: |
-          # Extract version from package.json
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          TAG="v$PACKAGE_VERSION"
-
-          # Create git tag if it doesn't exist
-          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping."
-          else
-            echo "Creating tag $TAG"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag "$TAG"
-            git push origin "$TAG"
-          fi
-
-          # Create GitHub Release if it doesn't exist
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "GitHub Release $TAG already exists, skipping."
-          else
-            echo "Creating GitHub Release $TAG"
-            gh release create "$TAG" --title "$TAG" --generate-notes
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

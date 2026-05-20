@@ -45,12 +45,10 @@ describe('Join Table Generation - Functional Tests', () => {
       expect(generated).toContain('category_id:');
       expect(generated).toContain('post_id:');
 
-      // Should map to database A/B columns
-      expect(generated).toContain('Schema.fromKey("A")');
-      expect(generated).toContain('Schema.fromKey("B")');
-
-      // Should use propertySignature for mapping
-      expect(generated).toContain('Schema.propertySignature');
+      // Should map semantic field names to the database A/B columns via encodeKeys
+      expect(generated).toContain('Schema.encodeKeys(');
+      expect(generated).toMatch(/category_id:\s*"A"/);
+      expect(generated).toMatch(/post_id:\s*"B"/);
 
       // Should NOT use raw A/B field names
       expect(generated).not.toMatch(/\bA:\s+columnType/);
@@ -81,8 +79,9 @@ describe('Join Table Generation - Functional Tests', () => {
       // Product < ProductTag alphabetically, so A = Product, B = ProductTag
       expect(generated).toContain('product_id:');
       expect(generated).toContain('product_tag_id:');
-      expect(generated).toContain('Schema.fromKey("A")');
-      expect(generated).toContain('Schema.fromKey("B")');
+      expect(generated).toContain('Schema.encodeKeys(');
+      expect(generated).toMatch(/product_id:\s*"A"/);
+      expect(generated).toMatch(/product_tag_id:\s*"B"/);
     });
   });
 
@@ -240,10 +239,10 @@ describe('Join Table Generation - Functional Tests', () => {
       const joinTables = detectImplicitManyToMany(dmmf.datamodel.models);
       const generated = generateJoinTableSchema(joinTables[0], dmmf);
 
-      // Should reference branded ID schemas, not raw Schema.UUID
+      // Should reference branded ID schemas, not raw Schema.String.check(Schema.isUUID())
       expect(generated).toContain('columnType(CategoryId, Schema.Never, Schema.Never)');
       expect(generated).toContain('columnType(PostId, Schema.Never, Schema.Never)');
-      expect(generated).not.toContain('Schema.UUID');
+      expect(generated).not.toContain('Schema.String.check(Schema.isUUID())');
     });
 
     it('should reference branded ID schemas for Int ID fields', async () => {
@@ -300,7 +299,7 @@ describe('Join Table Generation - Functional Tests', () => {
       expect(generated).toContain('tag_id:');
       expect(generated).toContain('columnType(TagId, Schema.Never, Schema.Never)');
       // Should not contain raw schema types
-      expect(generated).not.toContain('Schema.UUID');
+      expect(generated).not.toContain('Schema.String.check(Schema.isUUID())');
       expect(generated).not.toContain('Schema.Number');
     });
 
@@ -388,9 +387,10 @@ describe('Join Table Generation - Functional Tests', () => {
       expect(generated).toContain('user_permission_id:');
       expect(generated).toContain('user_profile_id:');
 
-      // Should still map to A/B
-      expect(generated).toContain('Schema.fromKey("A")');
-      expect(generated).toContain('Schema.fromKey("B")');
+      // Should still map to A/B via encodeKeys
+      expect(generated).toContain('Schema.encodeKeys(');
+      expect(generated).toMatch(/user_permission_id:\s*"A"/);
+      expect(generated).toMatch(/user_profile_id:\s*"B"/);
     });
   });
 });

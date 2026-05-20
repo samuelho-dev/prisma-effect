@@ -12,7 +12,7 @@ import { Schema } from 'effect';
 /**
  * Boolean string schema - strictly validates 'true' or 'false'
  */
-const BooleanString = Schema.Literal('true', 'false');
+const BooleanString = Schema.Literals(['true', 'false']);
 
 /**
  * Generator configuration schema

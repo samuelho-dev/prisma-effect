@@ -16,7 +16,7 @@ import type { DomainInfo } from './domain-detector.js';
 /**
  * Scaffold method schema
  */
-const ScaffoldMethod = Schema.Literal('generator', 'manual', 'existing');
+const ScaffoldMethod = Schema.Literals(['generator', 'manual', 'existing']);
 
 /**
  * Scaffold result schema
@@ -159,7 +159,7 @@ function manualScaffold(domain: DomainInfo, config: GeneratorConfig) {
     },
     dependencies: {},
     peerDependencies: {
-      effect: '^3.0.0',
+      effect: '^4.0.0-beta',
       kysely: '^0.28.0',
     },
   };

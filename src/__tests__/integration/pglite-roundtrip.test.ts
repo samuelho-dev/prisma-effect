@@ -1,0 +1,118 @@
+import { Effect, Schema } from 'effect';
+import type { Kysely } from 'kysely';
+import { describe, expect, it } from 'vitest';
+import { NotFoundError } from '../../error/index.js';
+import { columnType, generated } from '../../kysely/helpers.js';
+import { KyselyDb, makePgliteLayer } from '../helpers/pglite-db.js';
+
+/**
+ * End-to-end roundtrip: prove the shape this package emits actually works
+ * against real Postgres semantics (via pglite).
+ *
+ * Hand-written `User` schema mirrors the canonical generator output documented
+ * in CLAUDE.md — branded UUID id (read-only, server-generated), generated()
+ * timestamp, and a plain string column. If this passes, the generated shape
+ * passes by construction.
+ */
+
+const UserDDL = `
+  CREATE TABLE "User" (
+    "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    "email" text NOT NULL UNIQUE,
+    "createdAt" timestamptz NOT NULL DEFAULT now()
+  );
+`;
+
+const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
+type UserId = typeof UserId.Type;
+
+const User = Schema.Struct({
+  id: columnType(UserId, Schema.Never, Schema.Never),
+  email: Schema.String,
+  createdAt: generated(Schema.Date),
+});
+
+// Kysely's DB interface stores the raw schema Type so its own ColumnType brands
+// drive Kysely's Insertable/Updateable derivation. (Consumers of generated output
+// typically use `Selectable<typeof User>` in DB — the choice here gives us tighter
+// roundtrip coverage without changing the generator.)
+interface DB {
+  User: Schema.Schema.Type<typeof User>;
+}
+
+describe('pglite roundtrip', () => {
+  it('inserts and selects through generated-shape schema', async () => {
+    const program = Effect.gen(function* () {
+      const db = (yield* KyselyDb) as Kysely<DB>;
+
+      const inserted = yield* Effect.tryPromise({
+        try: () =>
+          db
+            .insertInto('User')
+            .values({ email: 'alice@example.com' })
+            .returningAll()
+            .executeTakeFirstOrThrow(),
+        catch: (cause) => new Error(`insert failed: ${String(cause)}`),
+      });
+
+      const decoded = Schema.decodeUnknownSync(User)(inserted);
+
+      const found = yield* Effect.tryPromise({
+        try: () =>
+          db.selectFrom('User').selectAll().where('id', '=', decoded.id).executeTakeFirst(),
+        catch: (cause) => new Error(`select failed: ${String(cause)}`),
+      });
+
+      if (!found) {
+        return yield* new NotFoundError({ table: 'User', criteria: { id: decoded.id } });
+      }
+
+      const foundDecoded = Schema.decodeUnknownSync(User)(found);
+      return { inserted: decoded, found: foundDecoded };
+    });
+
+    const Live = makePgliteLayer<DB>(UserDDL);
+    const result = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(Live))));
+
+    expect(result.inserted.email).toBe('alice@example.com');
+    expect(result.inserted.createdAt).toBeInstanceOf(Date);
+    expect(typeof result.inserted.id).toBe('string');
+    expect(result.found.id).toBe(result.inserted.id);
+  });
+
+  it('null on missing row surfaces as NotFoundError tagged channel', async () => {
+    const findOrNotFound: Effect.Effect<string, NotFoundError | Error, KyselyDb> = Effect.gen(
+      function* () {
+        const db = (yield* KyselyDb) as Kysely<DB>;
+        const missing = yield* Effect.tryPromise({
+          try: () =>
+            db
+              .selectFrom('User')
+              .selectAll()
+              .where('email', '=', 'nobody@example.com')
+              .executeTakeFirst(),
+          catch: (cause) => new Error(`select failed: ${String(cause)}`),
+        });
+
+        if (!missing) {
+          return yield* Effect.fail(
+            new NotFoundError({
+              table: 'User',
+              criteria: { email: 'nobody@example.com' },
+            })
+          );
+        }
+        return 'unreachable';
+      }
+    );
+
+    const Live = makePgliteLayer<DB>(UserDDL);
+    const recovered = findOrNotFound.pipe(
+      Effect.catchTag('NotFoundError', (e) => Effect.succeed(`missing in ${e.table}`)),
+      Effect.provide(Live),
+      Effect.scoped
+    );
+
+    await expect(Effect.runPromise(recovered)).resolves.toBe('missing in User');
+  });
+});

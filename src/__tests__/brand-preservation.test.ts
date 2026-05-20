@@ -16,7 +16,7 @@ describe('Brand Preservation Through Type System', () => {
   describe('Step 1: columnType return type', () => {
     it('should return schema with VariantMarker in type signature', () => {
       const idField = columnType(
-        Schema.UUID.pipe(Schema.brand('TestId')),
+        Schema.String.check(Schema.isUUID()).pipe(Schema.brand('TestId')),
         Schema.Never,
         Schema.Never
       );
@@ -32,11 +32,7 @@ describe('Brand Preservation Through Type System', () => {
     });
 
     it('should preserve VariantMarker with different insert/update types', () => {
-      const timestampField = columnType(
-        Schema.DateFromSelf,
-        Schema.optional(Schema.DateFromSelf),
-        Schema.DateFromSelf
-      );
+      const timestampField = columnType(Schema.Date, Schema.optional(Schema.Date), Schema.Date);
 
       type TimestampType = Schema.Schema.Type<typeof timestampField>;
       type HasVariant = TimestampType extends { readonly [VariantTypeId]: any } ? true : false;
@@ -48,7 +44,11 @@ describe('Brand Preservation Through Type System', () => {
   describe('Step 2: Schema.Struct field type preservation', () => {
     it('should preserve VariantMarker on individual fields after Struct creation', () => {
       const TestModel = Schema.Struct({
-        id: columnType(Schema.UUID.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
+        id: columnType(
+          Schema.String.check(Schema.isUUID()).pipe(Schema.brand('TestId')),
+          Schema.Never,
+          Schema.Never
+        ),
         name: Schema.String,
       });
 
@@ -67,7 +67,7 @@ describe('Brand Preservation Through Type System', () => {
     it('should preserve VariantMarker on generated fields', () => {
       const TestModel = Schema.Struct({
         id: columnType(Schema.Number.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
-        createdAt: generated(Schema.DateFromSelf),
+        createdAt: generated(Schema.Date),
       });
 
       type ModelType = Schema.Schema.Type<typeof TestModel>;
@@ -83,7 +83,11 @@ describe('Brand Preservation Through Type System', () => {
   describe('Step 3: Insertable type utility', () => {
     it('should omit fields with VariantMarker<never, never>', () => {
       const TestModel = Schema.Struct({
-        id: columnType(Schema.UUID.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
+        id: columnType(
+          Schema.String.check(Schema.isUUID()).pipe(Schema.brand('TestId')),
+          Schema.Never,
+          Schema.Never
+        ),
         name: Schema.String,
         email: Schema.String,
       });
@@ -105,8 +109,8 @@ describe('Brand Preservation Through Type System', () => {
       const TestModel = Schema.Struct({
         id: columnType(Schema.Number.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
         name: Schema.String,
-        createdAt: generated(Schema.DateFromSelf),
-        updatedAt: generated(Schema.DateFromSelf),
+        createdAt: generated(Schema.Date),
+        updatedAt: generated(Schema.Date),
       });
 
       type TestInsert = Insertable<typeof TestModel>;
@@ -127,10 +131,14 @@ describe('Brand Preservation Through Type System', () => {
   describe('Step 4: Declaration merging pattern', () => {
     // Simulate the generated code pattern
     const User = Schema.Struct({
-      id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
+      id: columnType(
+        Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId')),
+        Schema.Never,
+        Schema.Never
+      ),
       email: Schema.String,
       name: Schema.String,
-      createdAt: generated(Schema.DateFromSelf),
+      createdAt: generated(Schema.Date),
     });
     type User = typeof User;
 
@@ -156,7 +164,11 @@ describe('Brand Preservation Through Type System', () => {
   describe('Step 5: Extracted VariantMarker values', () => {
     it('should correctly extract insert type from VariantMarker', () => {
       const TestModel = Schema.Struct({
-        id: columnType(Schema.UUID.pipe(Schema.brand('TestId')), Schema.Never, Schema.Never),
+        id: columnType(
+          Schema.String.check(Schema.isUUID()).pipe(Schema.brand('TestId')),
+          Schema.Never,
+          Schema.Never
+        ),
         name: Schema.String,
       });
 
@@ -184,7 +196,7 @@ describe('Brand Preservation Through Type System', () => {
 
     it('should correctly extract insert type from generated field', () => {
       const TestModel = Schema.Struct({
-        createdAt: generated(Schema.DateFromSelf),
+        createdAt: generated(Schema.Date),
       });
 
       type ModelType = Schema.Schema.Type<typeof TestModel>;

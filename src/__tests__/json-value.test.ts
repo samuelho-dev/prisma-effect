@@ -106,7 +106,7 @@ describe('JsonValue Schema', () => {
         name: Schema.String,
         content: Schema.NullOr(JsonValue),
         metadata: Schema.NullOr(JsonValue),
-        created_at: generated(Schema.DateFromSelf),
+        created_at: generated(Schema.Date),
       });
 
       type ProductLike = typeof ProductLike;

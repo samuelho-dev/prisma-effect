@@ -22,10 +22,14 @@ type PaymentStatus = Schema.Schema.Type<typeof PaymentStatus>;
 
 // Simulate the Payment model as generated
 const Payment = Schema.Struct({
-  id: columnType(Schema.UUID.pipe(Schema.brand('PaymentId')), Schema.Never, Schema.Never),
+  id: columnType(
+    Schema.String.check(Schema.isUUID()).pipe(Schema.brand('PaymentId')),
+    Schema.Never,
+    Schema.Never
+  ),
   amount: generated(Schema.Number),
   status: generated(PaymentStatus),
-  created_at: generated(Schema.DateFromSelf),
+  created_at: generated(Schema.Date),
 });
 
 type Payment = typeof Payment;

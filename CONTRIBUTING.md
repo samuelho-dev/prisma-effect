@@ -12,17 +12,20 @@ Thank you for your interest in contributing! This document provides guidelines a
 ### Setup (< 5 minutes)
 
 1. **Fork and Clone**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/prisma-effect-kysely.git
    cd prisma-effect-kysely
    ```
 
 2. **Install Dependencies**
+
    ```bash
    pnpm install
    ```
 
 3. **Run Tests**
+
    ```bash
    pnpm test
    ```
@@ -46,6 +49,7 @@ That's it! You're ready to contribute.
 ### Making Changes
 
 1. **Create a branch**
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -56,6 +60,7 @@ That's it! You're ready to contribute.
    - Update documentation if needed
 
 3. **Run quality checks**
+
    ```bash
    pnpm run lint        # Check code style
    pnpm run typecheck   # Check TypeScript types
@@ -63,6 +68,7 @@ That's it! You're ready to contribute.
    ```
 
 4. **Commit your changes**
+
    ```bash
    git add .
    git commit -m "feat: add amazing feature"
@@ -90,6 +96,7 @@ That's it! You're ready to contribute.
 - **Auto-fix**: Pre-commit hooks auto-fix most issues
 
 Run manually:
+
 ```bash
 pnpm run lint:fix    # Fix linting issues
 pnpm run format      # Format all files
@@ -107,6 +114,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 - `chore:` Maintenance tasks
 
 **Examples:**
+
 ```bash
 feat: add support for Decimal type mapping
 fix: resolve UUID detection for Int fields
@@ -227,6 +235,7 @@ Before submitting your PR, ensure:
 ## 🎉 Recognition
 
 Contributors will be:
+
 - Listed in release notes
 - Credited in CHANGELOG.md
 - Added to GitHub contributors list

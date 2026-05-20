@@ -38,11 +38,15 @@ import {
 
 // User model with __meta for type utilities
 const _UserSchema = Schema.Struct({
-  id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
+  id: columnType(
+    Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId')),
+    Schema.Never,
+    Schema.Never
+  ),
   email: Schema.String,
   name: Schema.String,
-  createdAt: generated(Schema.DateFromSelf),
-  updatedAt: generated(Schema.DateFromSelf),
+  createdAt: generated(Schema.Date),
+  updatedAt: generated(Schema.Date),
 });
 
 interface User extends Schema.Schema.Type<typeof _UserSchema> {
@@ -58,12 +62,16 @@ interface User extends Schema.Schema.Type<typeof _UserSchema> {
 
 // Post model with foreign key to User
 const _PostSchema = Schema.Struct({
-  id: columnType(Schema.UUID.pipe(Schema.brand('PostId')), Schema.Never, Schema.Never),
+  id: columnType(
+    Schema.String.check(Schema.isUUID()).pipe(Schema.brand('PostId')),
+    Schema.Never,
+    Schema.Never
+  ),
   title: Schema.String,
   content: Schema.NullOr(Schema.String),
-  author_id: Schema.UUID.pipe(Schema.brand('UserId')),
+  author_id: Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId')),
   published: generated(Schema.Boolean),
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(Schema.Date),
 });
 
 interface Post extends Schema.Schema.Type<typeof _PostSchema> {
@@ -82,9 +90,9 @@ interface Post extends Schema.Schema.Type<typeof _PostSchema> {
 const _CommentSchema = Schema.Struct({
   id: columnType(Schema.Number.pipe(Schema.brand('CommentId')), Schema.Never, Schema.Never),
   text: Schema.String,
-  post_id: Schema.UUID.pipe(Schema.brand('PostId')),
-  user_id: Schema.NullOr(Schema.UUID.pipe(Schema.brand('UserId'))),
-  createdAt: generated(Schema.DateFromSelf),
+  post_id: Schema.String.check(Schema.isUUID()).pipe(Schema.brand('PostId')),
+  user_id: Schema.NullOr(Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'))),
+  createdAt: generated(Schema.Date),
 });
 
 interface Comment extends Schema.Schema.Type<typeof _CommentSchema> {
@@ -406,7 +414,7 @@ describe('Type Utilities and Branded IDs', () => {
 
     it('should work with branded types', () => {
       const brandedIdField = columnType(
-        Schema.UUID.pipe(Schema.brand('CustomId')),
+        Schema.String.check(Schema.isUUID()).pipe(Schema.brand('CustomId')),
         Schema.Never,
         Schema.Never
       );
@@ -425,14 +433,14 @@ describe('Type Utilities and Branded IDs', () => {
 
   describe('generated Helper', () => {
     it('should create schema with generated annotation', () => {
-      const timestampField = generated(Schema.DateFromSelf);
+      const timestampField = generated(Schema.Date);
       expect(Schema.isSchema(timestampField)).toBe(true);
     });
 
     it('should work with various types', () => {
       const numberField = generated(Schema.Number);
       const stringField = generated(Schema.String);
-      const dateField = generated(Schema.DateFromSelf);
+      const dateField = generated(Schema.Date);
 
       expect(Schema.isSchema(numberField)).toBe(true);
       expect(Schema.isSchema(stringField)).toBe(true);
@@ -762,10 +770,14 @@ describe('Kysely Integration - Type Compatibility', () => {
 describe('KyselyTable type utility', () => {
   it('should convert Effect schema to Kysely-compatible table type', () => {
     const TestUser = Schema.Struct({
-      id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
+      id: columnType(
+        Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId')),
+        Schema.Never,
+        Schema.Never
+      ),
       email: Schema.String,
       name: Schema.String,
-      created_at: generated(Schema.DateFromSelf),
+      created_at: generated(Schema.Date),
     });
 
     interface TestUser extends Schema.Schema.Type<typeof TestUser> {
@@ -789,14 +801,18 @@ describe('KyselyTable type utility', () => {
 describe('Insertable<User> resolution behavior', () => {
   it('should NOT resolve to never when using interface with __schema phantom property', () => {
     // Simulate the FIXED generated User schema (with __schema phantom property)
-    const TestUserId = Schema.UUID.pipe(Schema.brand('UserId'));
+    const TestUserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
     type TestUserId = Schema.Schema.Type<typeof TestUserId>;
 
     const TestUser = Schema.Struct({
-      id: columnType(Schema.UUID.pipe(Schema.brand('UserId')), Schema.Never, Schema.Never),
+      id: columnType(
+        Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId')),
+        Schema.Never,
+        Schema.Never
+      ),
       email: Schema.String,
       name: Schema.String,
-      created_at: generated(Schema.DateFromSelf),
+      created_at: generated(Schema.Date),
     });
 
     // FIXED: Use interface with __schema phantom property (exactly as generated now)
@@ -835,7 +851,7 @@ describe('Insertable<User> resolution behavior', () => {
     expect(hasSchema).toBe('NO');
 
     // Check 2: Is SimpleUser a Schema.Schema?
-    type IsSchema = SimpleUser extends Schema.Schema<unknown, unknown, unknown> ? 'YES' : 'NO';
+    type IsSchema = SimpleUser extends Schema.Codec<unknown, unknown, unknown> ? 'YES' : 'NO';
     const isSchema: IsSchema = 'NO';
     expect(isSchema).toBe('NO');
 

@@ -1,5 +1,5 @@
 import type { DMMF } from '@prisma/generator-helper';
-import { buildKyselyFieldType } from '../kysely/type.js';
+import { buildKyselyFieldType, fieldKeyMapping } from '../kysely/type.js';
 import { buildForeignKeyMap, type JoinTableInfo } from '../prisma/relation.js';
 import { isUuidField } from '../prisma/type.js';
 import { generateFileHeader } from '../utils/codegen.js';
@@ -41,12 +41,13 @@ export type ${name}Id = typeof ${name}Id.Type;`;
 
   /**
    * Determine the base Effect Schema type for an ID field.
-   * UUID strings → Schema.UUID, integers → Schema.Int, bigints → Schema.BigIntFromSelf, all others → Schema.String
+   * UUID strings → Schema.String.check(Schema.isUUID()), integers → Schema.Int,
+   * bigints → Schema.BigInt, all others → Schema.String
    */
   private getIdBaseType(field: DMMF.Field) {
-    if (isUuidField(field)) return 'Schema.UUID';
+    if (isUuidField(field)) return 'Schema.String.check(Schema.isUUID())';
     if (field.type === 'Int') return 'Schema.Int';
-    if (field.type === 'BigInt') return 'Schema.BigIntFromSelf';
+    if (field.type === 'BigInt') return 'Schema.BigInt';
     return 'Schema.String';
   }
 
@@ -59,20 +60,35 @@ export type ${name}Id = typeof ${name}Id.Type;`;
     const fkMap = buildForeignKeyMap(model, this.dmmf.datamodel.models);
     const name = toPascalCase(model.name);
 
+    // Collect @map renames; they are applied once as a struct-level encodeKeys
+    // (Effect 4 removed the per-field Schema.fromKey pattern).
+    const keyMappings: Array<{ tsName: string; dbName: string }> = [];
+
     const fieldDefinitions = fields
       .map((field) => {
         // Get base Effect type
         const baseType = buildFieldType(field, this.dmmf, fkMap);
-        // Apply Kysely helpers (columnType, generated) and @map directive
+        // Apply Kysely helpers (columnType, generated)
         // Pass model.name so @id fields use the model's branded ID type
         const fieldType = buildKyselyFieldType(baseType, field, model.name);
+
+        const mapping = fieldKeyMapping(field);
+        if (mapping) keyMappings.push(mapping);
+
         return `  ${field.name}: ${fieldType}`;
       })
       .join(',\n');
 
+    const encodeKeys =
+      keyMappings.length > 0
+        ? `.pipe(Schema.encodeKeys({ ${keyMappings
+            .map((m) => `${m.tsName}: "${m.dbName}"`)
+            .join(', ')} }))`
+        : '';
+
     return `export const ${name} = Schema.Struct({
 ${fieldDefinitions}
-});
+})${encodeKeys};
 export type ${name} = typeof ${name};`;
   }
 

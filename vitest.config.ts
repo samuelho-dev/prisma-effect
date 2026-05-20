@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    exclude: ['src/__tests__/integration/**/*'],
     alias: {
       '@/': new URL('./src/', import.meta.url).pathname,
     },

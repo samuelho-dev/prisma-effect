@@ -1,7 +1,13 @@
 import { Schema } from 'effect';
-import * as AST from 'effect/SchemaAST';
 import { describe, expect, it } from 'vitest';
 import { columnType, generated, Insertable, Selectable, Updateable } from '../kysely/helpers';
+
+// Read struct field names via the public `fields` record (Effect 4 dropped the
+// `effect/SchemaAST` TypeLiteral.propertySignatures shape these tests used).
+const fieldNamesOf = (schema: Schema.Top): string[] => {
+  const fields = (schema as { fields?: Record<string, unknown> }).fields;
+  return fields ? Object.keys(fields) : [];
+};
 
 /**
  * Effect Schema Runtime Behavior - Comprehensive Tests
@@ -130,9 +136,9 @@ describe('Effect Schema - Runtime Behavior', () => {
 
       it('should handle multiple generated fields', () => {
         const baseSchema = Schema.Struct({
-          id: generated(Schema.UUID),
-          session_id: generated(Schema.UUID),
-          created_at: generated(Schema.DateFromSelf),
+          id: generated(Schema.String.check(Schema.isUUID())),
+          session_id: generated(Schema.String.check(Schema.isUUID())),
+          created_at: generated(Schema.Date),
           name: Schema.String,
         });
 
@@ -146,11 +152,11 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     describe('Individual helper functions', () => {
       const TestSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         name: Schema.String,
         email: Schema.String,
         age: Schema.Number,
-        createdAt: Schema.DateFromSelf,
+        createdAt: Schema.Date,
       });
 
       it('Selectable() should return valid schema', () => {
@@ -204,8 +210,8 @@ describe('Effect Schema - Runtime Behavior', () => {
   describe('Insert Operations', () => {
     it('should allow insert without @default fields', () => {
       const UserSchema = Schema.Struct({
-        id: generated(Schema.UUID),
-        createdAt: generated(Schema.DateFromSelf),
+        id: generated(Schema.String.check(Schema.isUUID())),
+        createdAt: generated(Schema.Date),
         name: Schema.String,
         email: Schema.String,
       });
@@ -224,7 +230,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should make nullable fields optional on insert (omitting = NULL in DB)', () => {
       const ProductSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         name: Schema.String,
         description: Schema.NullOr(Schema.String),
         price: Schema.NullOr(Schema.Number),
@@ -251,9 +257,9 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should handle models with only generated fields', () => {
       const MetadataSchema = Schema.Struct({
-        id: generated(Schema.UUID),
-        createdAt: generated(Schema.DateFromSelf),
-        updatedAt: generated(Schema.DateFromSelf),
+        id: generated(Schema.String.check(Schema.isUUID())),
+        createdAt: generated(Schema.Date),
+        updatedAt: generated(Schema.Date),
       });
 
       const emptyInsert = {};
@@ -266,10 +272,10 @@ describe('Effect Schema - Runtime Behavior', () => {
   describe('Update Operations', () => {
     it('should make all fields optional for update', () => {
       const UserSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         name: Schema.String,
         email: Schema.String,
-        updatedAt: generated(Schema.DateFromSelf),
+        updatedAt: generated(Schema.Date),
       });
 
       const partialUpdate = {
@@ -282,7 +288,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should allow updating multiple fields', () => {
       const ProfileSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         bio: Schema.NullOr(Schema.String),
         avatar: Schema.NullOr(Schema.String),
         website: Schema.NullOr(Schema.String),
@@ -299,7 +305,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should allow setting fields to null', () => {
       const ModelSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         optionalField: Schema.NullOr(Schema.String),
       });
 
@@ -313,28 +319,24 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should exclude Never-typed fields from Updateable schema structure', () => {
       const UserSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         name: Schema.String,
       });
 
-      // Verify 'id' is NOT in the Updateable schema's property signatures
-      const updateableAst = Updateable(UserSchema).ast;
-      expect(AST.isTypeLiteral(updateableAst)).toBe(true);
-      const fieldNames = (updateableAst as AST.TypeLiteral).propertySignatures.map((p) => p.name);
+      // Verify 'id' is NOT in the Updateable schema's fields
+      const fieldNames = fieldNamesOf(Updateable(UserSchema));
       expect(fieldNames).not.toContain('id');
       expect(fieldNames).toContain('name');
     });
 
     it('should exclude Never-typed fields from Insertable schema structure', () => {
       const UserSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         name: Schema.String,
       });
 
-      // Verify 'id' is NOT in the Insertable schema's property signatures
-      const insertableAst = Insertable(UserSchema).ast;
-      expect(AST.isTypeLiteral(insertableAst)).toBe(true);
-      const fieldNames = (insertableAst as AST.TypeLiteral).propertySignatures.map((p) => p.name);
+      // Verify 'id' is NOT in the Insertable schema's fields
+      const fieldNames = fieldNamesOf(Insertable(UserSchema));
       expect(fieldNames).not.toContain('id');
       expect(fieldNames).toContain('name');
     });
@@ -343,10 +345,10 @@ describe('Effect Schema - Runtime Behavior', () => {
   describe('Select Operations', () => {
     it('should include all fields for select', () => {
       const UserSchema = Schema.Struct({
-        id: generated(Schema.UUID),
+        id: generated(Schema.String.check(Schema.isUUID())),
         name: Schema.String,
         email: Schema.String,
-        createdAt: generated(Schema.DateFromSelf),
+        createdAt: generated(Schema.Date),
       });
 
       const fullObject = {
@@ -365,7 +367,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should validate field types on select', () => {
       const UserSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         age: Schema.Number,
       });
 
@@ -388,7 +390,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should handle optional fields in select', () => {
       const ProfileSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         bio: Schema.NullOr(Schema.String),
       });
 
@@ -415,15 +417,19 @@ describe('Effect Schema - Runtime Behavior', () => {
   describe('Schema Validation', () => {
     it('should validate UUID fields correctly', () => {
       const validUuid = '123e4567-e89b-12d3-a456-426614174000';
-      expect(() => Schema.decodeUnknownSync(Schema.UUID)(validUuid)).not.toThrow();
+      expect(() =>
+        Schema.decodeUnknownSync(Schema.String.check(Schema.isUUID()))(validUuid)
+      ).not.toThrow();
 
       const invalidUuid = 'not-a-uuid';
-      expect(() => Schema.decodeUnknownSync(Schema.UUID)(invalidUuid)).toThrow();
+      expect(() =>
+        Schema.decodeUnknownSync(Schema.String.check(Schema.isUUID()))(invalidUuid)
+      ).toThrow();
     });
 
     it('should validate nested structures', () => {
       const PostSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         title: Schema.String,
         metadata: Schema.Struct({
           views: Schema.Number,
@@ -458,7 +464,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should validate array fields', () => {
       const TagSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         names: Schema.Array(Schema.String),
       });
 
@@ -483,8 +489,8 @@ describe('Effect Schema - Runtime Behavior', () => {
   describe('Encoding and Decoding', () => {
     it('should correctly encode Date fields to ISO strings', () => {
       const EventSchema = Schema.Struct({
-        id: Schema.UUID,
-        occurredAt: Schema.DateFromSelf,
+        id: Schema.String.check(Schema.isUUID()),
+        occurredAt: Schema.Date,
       });
 
       const testDate = new Date('2024-01-01T12:00:00Z');
@@ -507,7 +513,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should handle bigint encoding/decoding', () => {
       const CounterSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         count: Schema.BigInt,
       });
 
@@ -516,11 +522,13 @@ describe('Effect Schema - Runtime Behavior', () => {
         count: BigInt(9007199254740991),
       };
 
-      // Encode to string
+      // Effect 4: Schema.BigInt encodes to a native bigint (no string coercion),
+      // which is what we want so Kysely hands the driver a native bigint — the
+      // same native-encoding choice as DateTime -> Schema.Date.
       const encoded = Schema.encodeUnknownSync(Selectable(CounterSchema))(counter);
-      expect(typeof encoded.count).toBe('string');
+      expect(typeof encoded.count).toBe('bigint');
 
-      // Decode back to bigint
+      // Decode round-trips the bigint unchanged
       const decoded = Schema.decodeUnknownSync(Selectable(CounterSchema))(encoded);
       expect(decoded.count).toBe(counter.count);
       expect(typeof decoded.count).toBe('bigint');
@@ -531,9 +539,9 @@ describe('Effect Schema - Runtime Behavior', () => {
     it('should handle mixed field types correctly', () => {
       const baseSchema = Schema.Struct({
         // Read-only ID
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         // Generated timestamp
-        created_at: generated(Schema.DateFromSelf),
+        created_at: generated(Schema.Date),
         // Required fields
         email: Schema.String,
         username: Schema.String,
@@ -574,7 +582,7 @@ describe('Effect Schema - Runtime Behavior', () => {
     it('should handle typical user model with all field types', () => {
       const UserSchema = Schema.Struct({
         // Read-only generated ID
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         // Required fields
         email: Schema.String,
         username: Schema.String,
@@ -582,8 +590,8 @@ describe('Effect Schema - Runtime Behavior', () => {
         bio: Schema.NullOr(Schema.String),
         avatar: Schema.NullOr(Schema.String),
         // Generated timestamps
-        createdAt: generated(Schema.DateFromSelf),
-        updatedAt: generated(Schema.DateFromSelf),
+        createdAt: generated(Schema.Date),
+        updatedAt: generated(Schema.Date),
         // Array field
         roles: Schema.Array(Schema.String),
       });
@@ -633,14 +641,14 @@ describe('Effect Schema - Runtime Behavior', () => {
 
   describe('TypeScript Type Safety', () => {
     it('should preserve Schema type for generated() - compile-time check', () => {
-      const dateSchema = generated(Schema.DateFromSelf);
+      const dateSchema = generated(Schema.Date);
       const numberSchema = generated(Schema.Number);
-      const uuidSchema = generated(Schema.UUID);
+      const uuidSchema = generated(Schema.String.check(Schema.isUUID()));
 
       // Type assertions - will fail at compile time if types are wrong
-      const _dateCheck: Schema.Schema<Date, Date> = dateSchema;
-      const _numberCheck: Schema.Schema<number, number> = numberSchema;
-      const _uuidCheck: Schema.Schema<string, string> = uuidSchema;
+      const _dateCheck: Schema.Codec<Date, Date> = dateSchema;
+      const _numberCheck: Schema.Codec<number, number> = numberSchema;
+      const _uuidCheck: Schema.Codec<string, string> = uuidSchema;
 
       // Runtime validation - verify Schema type is preserved
       expect(Schema.isSchema(dateSchema)).toBe(true);
@@ -649,14 +657,18 @@ describe('Effect Schema - Runtime Behavior', () => {
     });
 
     it('should preserve Schema type for columnType() - compile-time check', () => {
-      const uuidSchema = columnType(Schema.UUID, Schema.Never, Schema.Never);
+      const uuidSchema = columnType(
+        Schema.String.check(Schema.isUUID()),
+        Schema.Never,
+        Schema.Never
+      );
       const numberSchema = columnType(Schema.Number, Schema.Never, Schema.Never);
-      const dateSchema = columnType(Schema.DateFromSelf, Schema.Never, Schema.Never);
+      const dateSchema = columnType(Schema.Date, Schema.Never, Schema.Never);
 
       // Type assertions - will fail at compile time if types are wrong
-      const _uuidCheck: Schema.Schema<string, string> = uuidSchema;
-      const _numberCheck: Schema.Schema<number, number> = numberSchema;
-      const _dateCheck: Schema.Schema<Date, Date> = dateSchema;
+      const _uuidCheck: Schema.Codec<string, string> = uuidSchema;
+      const _numberCheck: Schema.Codec<number, number> = numberSchema;
+      const _dateCheck: Schema.Codec<Date, Date> = dateSchema;
 
       // Runtime validation - verify Schema type is preserved
       expect(Schema.isSchema(uuidSchema)).toBe(true);
@@ -666,8 +678,8 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should return schemas with preserved TypeScript types from schema functions', () => {
       const baseSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
-        createdAt: generated(Schema.DateFromSelf),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
+        createdAt: generated(Schema.Date),
         name: Schema.String,
       });
 
@@ -679,7 +691,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should make arrays mutable in Insertable schema for Kysely compatibility', () => {
       const baseSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         names: Schema.Array(Schema.String),
         tags: Schema.Array(Schema.String),
       });
@@ -701,7 +713,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should make arrays mutable in Updateable schema for Kysely compatibility', () => {
       const baseSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         roles: Schema.Array(Schema.String),
       });
 
@@ -721,7 +733,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should preserve readonly arrays in Selectable schema', () => {
       const baseSchema = Schema.Struct({
-        id: Schema.UUID,
+        id: Schema.String.check(Schema.isUUID()),
         items: Schema.Array(Schema.String),
       });
 
@@ -738,7 +750,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should handle nested array types correctly', () => {
       const baseSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         coordinates: Schema.Array(Schema.Array(Schema.Number)),
       });
 
@@ -773,7 +785,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should handle array types with columnType() wrapper correctly', () => {
       const baseSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         names: Schema.Array(Schema.String),
       });
 
@@ -796,7 +808,7 @@ describe('Effect Schema - Runtime Behavior', () => {
 
     it('should handle generated array fields (user use case: verification_fields_needed)', () => {
       const baseSchema = Schema.Struct({
-        id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+        id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
         verification_fields_needed: generated(Schema.Array(Schema.String)),
         name: Schema.String,
       });
@@ -828,6 +840,72 @@ describe('Effect Schema - Runtime Behavior', () => {
       // Verify the array is mutable for update operations
       (updateResult.verification_fields_needed as string[]).push('ssn');
       expect(updateResult.verification_fields_needed).toContain('ssn');
+    });
+  });
+
+  describe('Join tables (encodeKeys-wrapped structs)', () => {
+    // Mirrors the generator's implicit-M:N join-table emit: a struct of read-only
+    // columnType FKs whose semantic field names are mapped to the DB A/B columns
+    // via Schema.encodeKeys. The variant functions must operate on the DECODED
+    // (semantic) field names — reading the encoded A/B keys would be a regression.
+    const ProductId = Schema.String.pipe(Schema.brand('ProductId'));
+    const ProductTagId = Schema.String.pipe(Schema.brand('ProductTagId'));
+
+    const JoinTable = Schema.Struct({
+      product_id: columnType(ProductId, Schema.Never, Schema.Never),
+      product_tag_id: columnType(ProductTagId, Schema.Never, Schema.Never),
+    }).pipe(Schema.encodeKeys({ product_id: 'A', product_tag_id: 'B' }));
+
+    const fieldNamesOf = (schema: Schema.Top): string[] => {
+      const fields = (schema as { fields?: Record<string, unknown> }).fields;
+      return fields ? Object.keys(fields) : [];
+    };
+
+    it('Selectable keeps semantic field names, not the encoded A/B columns', () => {
+      const names = fieldNamesOf(Selectable(JoinTable));
+      expect(names).toEqual(['product_id', 'product_tag_id']);
+      expect(names).not.toContain('A');
+      expect(names).not.toContain('B');
+    });
+
+    it('Insertable omits the read-only (Never) FK columns', () => {
+      // Both FKs are columnType(Id, Never, Never) -> excluded from insert.
+      expect(fieldNamesOf(Insertable(JoinTable))).toEqual([]);
+    });
+
+    it('Updateable omits the read-only (Never) FK columns', () => {
+      expect(fieldNamesOf(Updateable(JoinTable))).toEqual([]);
+    });
+  });
+
+  describe('Marker detection survives consumer .annotate()', () => {
+    // A consumer that calls `.annotate()` on a columnType/generated field rebuilds
+    // the schema object and drops the Object.assign'd own-properties. Detection
+    // must fall back to the AST annotation so the field is still recognized.
+    // Uses checked schemas (Schema.String.check(isUUID)) — the real generated shape
+    // — to exercise the AST.resolve-through-checks read path.
+    it('detects a re-annotated generated() field (omitted from insert)', () => {
+      const reAnnotated = generated(Schema.String.check(Schema.isUUID())).annotate({
+        title: 'consumer annotation',
+      });
+      const baseSchema = Schema.Struct({ id: reAnnotated, name: Schema.String });
+
+      const result = Schema.decodeUnknownSync(Insertable(baseSchema))({ name: 'x' });
+      expect(result).toEqual({ name: 'x' });
+      expect(result).not.toHaveProperty('id');
+    });
+
+    it('detects a re-annotated columnType(Never,Never) field (omitted from insert)', () => {
+      const reAnnotated = columnType(
+        Schema.String.check(Schema.isUUID()),
+        Schema.Never,
+        Schema.Never
+      ).annotate({ title: 'consumer annotation' });
+      const baseSchema = Schema.Struct({ id: reAnnotated, name: Schema.String });
+
+      const result = Schema.decodeUnknownSync(Insertable(baseSchema))({ name: 'x' });
+      expect(result).toEqual({ name: 'x' });
+      expect(result).not.toHaveProperty('id');
     });
   });
 });

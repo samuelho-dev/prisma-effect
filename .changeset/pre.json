@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "prisma-effect-kysely": "5.5.0"
+  },
+  "changesets": []
+}

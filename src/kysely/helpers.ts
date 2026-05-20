@@ -27,6 +27,15 @@ import type {
  * Note: This package exports branded versions of ColumnType and Generated that
  * are compatible with Effect Schema's type inference. These extend the base
  * select type (S) while carrying phantom insert/update type information.
+ *
+ * ## Effect 4 note
+ *
+ * Effect 4 reworked `effect/SchemaAST` (e.g. `PropertySignature` is now 2-arg,
+ * structs are `Objects` nodes, `isTypeLiteral` is gone). Instead of rebuilding
+ * AST nodes by hand, the Selectable/Insertable/Updateable functions now operate
+ * on the public `Struct.fields` record and the per-field schemas that
+ * `columnType()`/`generated()` attach as own properties. This avoids depending
+ * on private AST constructors entirely.
  */
 
 // Re-export Kysely's native type utilities with aliases for advanced use cases
@@ -52,7 +61,7 @@ export type VariantTypeId = typeof VariantTypeId;
 // ============================================================================
 // These branded types extend S while carrying phantom insert/update information.
 // Unlike Kysely's ColumnType<S,I,U> = { __select__: S, __insert__: I, __update__: U },
-// our branded types ARE subtypes of S, so Schema.make<ColumnType<...>>(ast) works.
+// our branded types ARE subtypes of S, so the schema's Type stays a subtype of S.
 
 /**
  * Variant marker using mapped type pattern from Effect's Brand.
@@ -81,8 +90,8 @@ export interface VariantMarker<in out I, in out U> {
  *
  * This replaces Kysely's ColumnType because:
  * 1. Kysely's ColumnType<S,I,U> = { __select__: S, __insert__: I, __update__: U } is NOT a subtype of S
- * 2. Schema.make<KyselyColumnType<...>>(ast) doesn't work because AST represents S, not the struct
- * 3. Our ColumnType<S,I,U> = S & Brand IS a subtype of S, so Schema.make works correctly
+ * 2. A schema whose Type is the struct (not S) breaks `S`-shaped inference
+ * 3. Our ColumnType<S,I,U> = S & Brand IS a subtype of S, so the schema's Type stays compatible
  *
  * Includes Kysely's phantom properties (__select__, __insert__, __update__) so that:
  * 1. Kysely recognizes this as a ColumnType for INSERT/UPDATE operations
@@ -152,10 +161,10 @@ export type Generated<T> = GeneratedBrand<T> & {
 // Runtime Annotation Schemas
 // ============================================================================
 
-interface ColumnTypeSchemas<SType, SEncoded, SR, IType, IEncoded, IR, UType, UEncoded, UR> {
-  selectSchema: Schema.Schema<SType, SEncoded, SR>;
-  insertSchema: Schema.Schema<IType, IEncoded, IR>;
-  updateSchema: Schema.Schema<UType, UEncoded, UR>;
+interface ColumnTypeSchemas {
+  readonly selectSchema: Schema.Top;
+  readonly insertSchema: Schema.Top;
+  readonly updateSchema: Schema.Top;
 }
 
 /**
@@ -166,21 +175,27 @@ interface ColumnTypeSchemas<SType, SEncoded, SR, IType, IEncoded, IR, UType, UEn
  *
  * This follows the Schema.brand pattern from Effect which returns a named interface.
  */
-export interface ColumnTypeSchema<S extends Schema.Schema.All, IType, UType> extends Schema.Schema<
+export interface ColumnTypeSchema<S extends Schema.Top, IType, UType> extends Schema.Codec<
   ColumnType<Schema.Schema.Type<S>, IType, UType>,
-  ColumnType<Schema.Schema.Encoded<S>, IType, UType>,
-  Schema.Schema.Context<S>
+  ColumnType<Schema.Codec.Encoded<S>, IType, UType>,
+  Schema.Codec.DecodingServices<S>,
+  Schema.Codec.EncodingServices<S>
 > {
   /** The original select schema */
   readonly selectSchema: S;
+  /** The insert-variant schema (stored for Insertable() to read at runtime) */
+  readonly insertSchema: Schema.Top;
+  /** The update-variant schema (stored for Updateable() to read at runtime) */
+  readonly updateSchema: Schema.Top;
 }
 
 /**
  * Mark a field as having different types for select/insert/update
  * Used for ID fields with @default (read-only)
  *
- * The insert/update schemas are stored in annotations and used at runtime
- * to determine which fields to include in Insertable/Updateable schemas.
+ * The insert/update schemas are attached as own properties (and mirrored into a
+ * symbol annotation) so the Insertable()/Updateable() functions can read which
+ * variant to use for each field at runtime.
  *
  * Returns a ColumnTypeSchema which:
  * 1. Is a named interface (preserved in declaration emit)
@@ -189,26 +204,24 @@ export interface ColumnTypeSchema<S extends Schema.Schema.All, IType, UType> ext
  *
  * This enables Kysely to recognize fields with `__insert__: never` and omit them from INSERT.
  */
-export const columnType = <SType, SEncoded, SR, IType, IEncoded, IR, UType, UEncoded, UR>(
-  selectSchema: Schema.Schema<SType, SEncoded, SR>,
-  insertSchema: Schema.Schema<IType, IEncoded, IR>,
-  updateSchema: Schema.Schema<UType, UEncoded, UR>
+export const columnType = <S extends Schema.Top, I extends Schema.Top, U extends Schema.Top>(
+  selectSchema: S,
+  insertSchema: I,
+  updateSchema: U
 ) => {
-  const schemas: ColumnTypeSchemas<SType, SEncoded, SR, IType, IEncoded, IR, UType, UEncoded, UR> =
-    {
-      selectSchema,
-      insertSchema,
-      updateSchema,
-    };
-  // Return annotated schema with ColumnType brand at type level
-  // The runtime annotation enables filtering in Insertable() function
-  // The type-level brand enables Kysely to recognize INSERT/UPDATE constraints
-  const annotated = selectSchema.annotations({ [ColumnTypeId]: schemas });
-  return Object.assign(annotated, { selectSchema }) as ColumnTypeSchema<
-    Schema.Schema<SType, SEncoded, SR>,
-    IType,
-    UType
-  >;
+  const schemas: ColumnTypeSchemas = { selectSchema, insertSchema, updateSchema };
+  // Store the variant sub-schemas in an AST annotation. The annotation rides on
+  // the AST node, so it survives a consumer `.annotate()` (which rebuilds the
+  // wrapper object and drops `Object.assign`'d own-properties). The own
+  // properties are also kept because they are part of the `ColumnTypeSchema`
+  // interface contract, but runtime detection reads the annotation (see
+  // getColumnTypeSchemas).
+  const annotated = selectSchema.annotate({ [ColumnTypeId]: schemas });
+  return Object.assign(annotated, {
+    selectSchema,
+    insertSchema,
+    updateSchema,
+  }) as unknown as ColumnTypeSchema<S, Schema.Schema.Type<I>, Schema.Schema.Type<U>>;
 };
 
 /**
@@ -219,10 +232,11 @@ export const columnType = <SType, SEncoded, SR, IType, IEncoded, IR, UType, UEnc
  *
  * This follows the Schema.brand pattern from Effect which returns a named interface.
  */
-export interface GeneratedSchema<S extends Schema.Schema.All> extends Schema.Schema<
+export interface GeneratedSchema<S extends Schema.Top> extends Schema.Codec<
   Generated<Schema.Schema.Type<S>>,
-  Generated<Schema.Schema.Encoded<S>>,
-  Schema.Schema.Context<S>
+  Generated<Schema.Codec.Encoded<S>>,
+  Schema.Codec.DecodingServices<S>,
+  Schema.Codec.EncodingServices<S>
 > {
   /** The original schema before Generated wrapper */
   readonly from: S;
@@ -243,12 +257,16 @@ export interface GeneratedSchema<S extends Schema.Schema.All> extends Schema.Sch
  *
  * This enables CustomInsertable to filter out generated fields at compile time.
  */
-export const generated = <S extends Schema.Schema.All>(schema: S) => {
-  // Return annotated schema with Generated brand at type level
-  // The runtime annotation enables filtering in Insertable() function
-  // The type-level brand enables filtering in CustomInsertable type utility
-  const annotated = schema.annotations({ [GeneratedId]: true });
-  return Object.assign(annotated, { from: schema }) as GeneratedSchema<S>;
+export const generated = <S extends Schema.Top>(schema: S) => {
+  // Store the marker AND the base schema in an AST annotation. The annotation
+  // rides on the AST node, so it survives a consumer `.annotate()` (which rebuilds
+  // the wrapper object and drops `Object.assign`'d own-properties). The own `from`
+  // property is also kept because it is part of the `GeneratedSchema<S>` interface
+  // contract, but runtime detection reads the annotation (see getGeneratedFrom).
+  const annotated = schema.annotate({ [GeneratedId]: { from: schema } });
+  return Object.assign(annotated, {
+    from: schema,
+  }) as unknown as GeneratedSchema<S>;
 };
 
 // ============================================================================
@@ -271,174 +289,121 @@ export type JsonValue =
   | ReadonlyArray<JsonValue>
   | { readonly [key: string]: JsonValue };
 
-export const JsonValue: Schema.Schema<JsonValue, JsonValue> = Schema.suspend(
-  (): Schema.Schema<JsonValue, JsonValue> =>
-    Schema.Union(
+export const JsonValue: Schema.Codec<JsonValue, JsonValue> = Schema.suspend(
+  (): Schema.Codec<JsonValue, JsonValue> =>
+    Schema.Union([
       Schema.String,
       Schema.Number,
       Schema.Boolean,
       Schema.Null,
       Schema.Array(JsonValue),
-      Schema.Record({ key: Schema.String, value: JsonValue })
-    )
+      Schema.Record(Schema.String, JsonValue),
+    ])
 );
 
 // ============================================================================
-// Type Helpers (defined early for use in schema functions)
+// Runtime field helpers (operate on Struct.fields entries, not raw AST)
 // ============================================================================
 
-type AnyColumnTypeSchemas = ColumnTypeSchemas<
-  unknown,
-  unknown,
-  unknown,
-  unknown,
-  unknown,
-  unknown,
-  unknown,
-  unknown,
-  unknown
->;
-
 /**
- * Schema for validating column type annotations structure
+ * A schema entry as it appears in `Struct.fields`. The `columnType()`/`generated()`
+ * markers may be present either as `Object.assign`'d own-properties (the common
+ * path — they survive a field being placed into `Schema.Struct`) or, if a consumer
+ * rebuilt the schema with `.annotate()` (which drops own-props), only in the AST
+ * annotation. Detection checks own-props first, then falls back to the annotation.
  */
-const ColumnTypeSchemasValidator = Schema.Struct({
-  selectSchema: Schema.Any,
-  insertSchema: Schema.Any,
-  updateSchema: Schema.Any,
-});
+type FieldEntry = Schema.Top & {
+  readonly selectSchema?: Schema.Top;
+  readonly insertSchema?: Schema.Top;
+  readonly updateSchema?: Schema.Top;
+  readonly from?: Schema.Top;
+};
 
-/**
- * Extract and validate column type schemas from AST annotations
- * Returns null if not a column type or validation fails
- */
-function getColumnTypeSchemas(ast: AST.AST) {
-  if (!(ColumnTypeId in ast.annotations)) {
-    return null;
-  }
-
-  const annotation = ast.annotations[ColumnTypeId];
-  const decoded = Schema.decodeUnknownOption(ColumnTypeSchemasValidator)(annotation);
-
-  if (decoded._tag === 'None') {
-    return null;
-  }
-
-  // The decoded value has the correct structure, and the annotation
-  // was created by columnType() which ensures proper Schema types
-  return annotation as AnyColumnTypeSchemas;
+/** Shape stored in the `GeneratedId` annotation by `generated()`. */
+interface GeneratedAnnotation {
+  readonly from: Schema.Top;
 }
 
-const isGeneratedType = (ast: AST.AST) => GeneratedId in ast.annotations;
-
-const isOptionalType = (ast: AST.AST) => {
-  // Check for Union(T, Undefined) or Union(T, null) patterns
-  // These are optional on insert because omitting = NULL in DB
-  if (!AST.isUnion(ast)) {
-    return false;
-  }
-
-  return (
-    ast.types.some((t: AST.AST) => AST.isUndefinedKeyword(t)) ||
-    ast.types.some((t: AST.AST) => isNullType(t))
-  );
+/**
+ * Read a symbol-keyed annotation off a field schema.
+ *
+ * Uses `AST.resolve`, which returns the annotations of the last applied check
+ * when the schema carries checks (e.g. `Schema.String.check(Schema.isUUID())` —
+ * every UUID column), otherwise the base node's annotations. Reading
+ * `ast.annotations` directly would miss the marker on checked schemas because
+ * `.annotate()` writes onto the last check, not the base node.
+ */
+const readAnnotation = <T>(field: FieldEntry, key: symbol): T | undefined => {
+  const resolved = AST.resolve(field.ast) as Record<symbol, unknown> | undefined;
+  return resolved?.[key as never] as T | undefined;
 };
-
-const isNullType = (ast: AST.AST) => AST.isLiteral(ast) && ast.literal === null;
 
 /**
- * Strip null from a union type for Insertable fields.
- * For INSERT operations, omitting a field = null in DB, so we don't need explicit null.
- * Returns the non-null type if it's a union with null, otherwise returns the original type.
+ * Resolve the ColumnType variant sub-schemas for a field: own-property first
+ * (the path the generator emits), AST annotation as fallback (survives a
+ * consumer `.annotate()`).
  */
-const stripNullFromUnion = (ast: AST.AST): AST.AST => {
-  if (!AST.isUnion(ast)) {
-    return ast;
+const getColumnTypeSchemas = (field: FieldEntry): ColumnTypeSchemas | undefined => {
+  if (
+    field.selectSchema !== undefined &&
+    field.insertSchema !== undefined &&
+    field.updateSchema !== undefined &&
+    field.from === undefined
+  ) {
+    return {
+      selectSchema: field.selectSchema,
+      insertSchema: field.insertSchema,
+      updateSchema: field.updateSchema,
+    };
   }
-
-  // Filter out null types from the union
-  const nonNullTypes = ast.types.filter((t: AST.AST) => !isNullType(t));
-
-  // If only one type remains, return it directly (unwrap single-element union)
-  if (nonNullTypes.length === 1) {
-    return nonNullTypes[0];
-  }
-
-  // If multiple types remain, create a new union without null
-  if (nonNullTypes.length > 1) {
-    return AST.Union.make(nonNullTypes);
-  }
-
-  // Edge case: all types were null (shouldn't happen in practice)
-  return ast;
+  return readAnnotation<ColumnTypeSchemas>(field, ColumnTypeId);
 };
 
-const extractParametersFromTypeLiteral = (
-  ast: AST.TypeLiteral,
-  schemaType: keyof AnyColumnTypeSchemas
-) => {
-  return ast.propertySignatures
-    .map((prop: AST.PropertySignature) => {
-      const columnSchemas = getColumnTypeSchemas(prop.type);
+/** Resolve the base schema of a Generated field: own-property first, annotation fallback. */
+const getGeneratedFrom = (field: FieldEntry): Schema.Top | undefined =>
+  field.from ?? readAnnotation<GeneratedAnnotation>(field, GeneratedId)?.from;
 
-      if (columnSchemas !== null) {
-        const targetSchema = columnSchemas[schemaType];
+const isGeneratedField = (field: FieldEntry): boolean => getGeneratedFrom(field) !== undefined;
 
-        // Check for Schema.Never BEFORE mutable transformation
-        // Schema.mutable() wraps in Transformation node, changing _tag
-        if (AST.isNeverKeyword(targetSchema.ast)) {
-          return null; // Will be filtered out
-        }
+const isNeverSchema = (schema: Schema.Top): boolean => AST.isNever(schema.ast);
 
-        // Use Schema.mutable() for insert/update schema to make arrays mutable
-        // Kysely expects mutable T[] for insert/update operations
-        const shouldBeMutable = schemaType === 'updateSchema' || schemaType === 'insertSchema';
-        return new AST.PropertySignature(
-          prop.name,
-          shouldBeMutable ? Schema.mutable(targetSchema).ast : targetSchema.ast,
-          prop.isOptional,
-          prop.isReadonly,
-          prop.annotations
-        );
-      }
+const isArraySchema = (schema: Schema.Top): boolean => AST.isArrays(schema.ast);
 
-      // Handle Generated fields for Selectable - need to unwrap the base type
-      // Generated<T> annotates the schema but we want plain T for select
-      if (schemaType === 'selectSchema' && isGeneratedType(prop.type)) {
-        // Generated fields have the base schema stored in annotations
-        // The AST is the annotated version of the base schema, so just strip annotations
-        // Get the underlying type by removing the Generated annotation
-        const baseAst = AST.annotations(prop.type, {
-          ...prop.type.annotations,
-          [GeneratedId]: undefined,
-          [ColumnTypeId]: undefined,
-        });
-        return new AST.PropertySignature(
-          prop.name,
-          baseAst,
-          prop.isOptional,
-          prop.isReadonly,
-          prop.annotations
-        );
-      }
-
-      // Apply Schema.mutable() to regular fields for insert/updateSchema to make arrays mutable
-      // Safe for all types - no-op for non-arrays
-      if (schemaType === 'updateSchema' || schemaType === 'insertSchema') {
-        return new AST.PropertySignature(
-          prop.name,
-          Schema.mutable(Schema.asSchema(Schema.make(prop.type))).ast,
-          prop.isOptional,
-          prop.isReadonly,
-          prop.annotations
-        );
-      }
-
-      // Regular fields - return as-is
-      return prop;
-    })
-    .filter((prop): prop is AST.PropertySignature => prop !== null);
+/**
+ * Detect `Union(T, Null)` (a NullOr) at the schema level via its members.
+ * Optional-on-insert because omitting the column = NULL in the DB.
+ */
+const isNullableUnion = (
+  schema: Schema.Top
+): schema is Schema.Union<readonly [Schema.Top, Schema.Top]> => {
+  const members = (schema as { members?: ReadonlyArray<Schema.Top> }).members;
+  return Array.isArray(members) && members.some((m) => AST.isNull(m.ast));
 };
+
+/**
+ * Strip null from a `NullOr` schema for Insertable fields.
+ * For INSERT, omitting a field = NULL in the DB, so explicit null is unnecessary.
+ * Returns the non-null member; otherwise returns the schema unchanged.
+ */
+const stripNull = (schema: Schema.Top): Schema.Top => {
+  const members = (schema as { members?: ReadonlyArray<Schema.Top> }).members;
+  if (!Array.isArray(members)) return schema;
+  const nonNull = members.filter((m) => !AST.isNull(m.ast));
+  if (nonNull.length === 1) return nonNull[0];
+  if (nonNull.length > 1) return Schema.Union(nonNull);
+  return schema;
+};
+
+/** Apply `Schema.mutable` only to array fields (it throws on scalars in v4). */
+const mutableIfArray = (schema: Schema.Top): Schema.Top =>
+  isArraySchema(schema)
+    ? Schema.mutable(schema as Schema.Top & { readonly ast: AST.Arrays })
+    : schema;
+
+/** Strip the Generated marker so the underlying base schema is used. */
+const unwrapGenerated = (field: FieldEntry): Schema.Top => getGeneratedFrom(field) ?? field;
+
+type Fields = Record<string, Schema.Top>;
 
 // ============================================================================
 // Custom Type Utilities for Insert/Update
@@ -569,38 +534,67 @@ type StripKyselyWrappersFromObject<T> = {
 // Schema Functions
 // ============================================================================
 
+/**
+ * Read the public `Struct.fields` record from a schema, or null when the schema
+ * is not a struct (Effect 4 exposes `fields` only on Struct schemas).
+ *
+ * Transformation schemas produced by `Schema.encodeKeys` (used for implicit
+ * many-to-many join tables, which rename semantic field names to the DB `A`/`B`
+ * columns) do not expose `fields` directly. They are `decodeTo<To, From>` nodes
+ * where `.to` is the DECODED (semantic) struct and `.from` is the ENCODED struct
+ * with the renamed DB-column keys. Reach through `.to` so wrapper-stripping
+ * preserves the semantic field names (e.g. `product_id`), not the DB columns
+ * (`A`/`B`).
+ */
+const getStructFields = (schema: Schema.Top): Fields | null => {
+  const direct = (schema as { fields?: Fields }).fields;
+  if (direct && typeof direct === 'object') return direct;
+  const to = (schema as { to?: Schema.Top }).to;
+  if (to) {
+    const inner = (to as { fields?: Fields }).fields;
+    if (inner && typeof inner === 'object') return inner;
+  }
+  return null;
+};
+
 export function Selectable<Type, Encoded>(
-  schema: Schema.Schema<Type, Encoded>
-): Schema.Schema<
+  schema: Schema.Codec<Type, Encoded>
+): Schema.Codec<
   StripKyselyWrappersFromObject<Type>,
   StripKyselyWrappersFromObject<Encoded>,
+  never,
   never
 > {
-  // Strip Generated/ColumnType wrappers to match what Kysely returns from queries
-  // Branded foreign keys (UserId, ProductId) are preserved
-  const { ast } = schema;
-  if (!AST.isTypeLiteral(ast)) {
-    // Non-struct schemas: use as identity
-    // Internal cast needed because Schema.make(ast) returns unknown types
-    // The return type annotation is what TypeScript uses for declaration emit
-    return Schema.asSchema(Schema.make(ast)) as Schema.Schema<
+  const fields = getStructFields(schema);
+  if (fields === null) {
+    // Non-struct schemas: identity. The return-type annotation drives declaration emit.
+    return schema as unknown as Schema.Codec<
       StripKyselyWrappersFromObject<Type>,
       StripKyselyWrappersFromObject<Encoded>,
+      never,
       never
     >;
   }
-  // Extract select schemas from annotated fields (strips wrappers at runtime)
-  return Schema.asSchema(
-    Schema.make(
-      new AST.TypeLiteral(
-        extractParametersFromTypeLiteral(ast, 'selectSchema'),
-        ast.indexSignatures,
-        ast.annotations
-      )
-    )
-  ) as Schema.Schema<
+
+  // Strip Generated/ColumnType wrappers to match what Kysely returns from queries.
+  // Branded foreign keys (UserId, ProductId) are preserved.
+  const selectFields: Fields = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const field = value as FieldEntry;
+    const columnSchemas = getColumnTypeSchemas(field);
+    if (columnSchemas) {
+      selectFields[key] = columnSchemas.selectSchema;
+    } else if (isGeneratedField(field)) {
+      selectFields[key] = unwrapGenerated(field);
+    } else {
+      selectFields[key] = field;
+    }
+  }
+
+  return Schema.Struct(selectFields) as unknown as Schema.Codec<
     StripKyselyWrappersFromObject<Type>,
     StripKyselyWrappersFromObject<Encoded>,
+    never,
     never
   >;
 }
@@ -609,87 +603,92 @@ export function Selectable<Type, Encoded>(
  * Create Insertable schema from base schema
  * Generated fields (@default) are made optional, not excluded
  */
-export function Insertable<Type, Encoded>(schema: Schema.Schema<Type, Encoded>) {
-  const { ast } = schema;
-  if (!AST.isTypeLiteral(ast)) {
-    // Internal cast - return type annotation is what TypeScript uses for declaration emit
-    return Schema.asSchema(Schema.make(ast)) as Schema.Schema<
+export function Insertable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
+  const fields = getStructFields(schema);
+  if (fields === null) {
+    return schema as unknown as Schema.Codec<
       MutableInsert<Type>,
       MutableInsert<Encoded>,
+      never,
       never
     >;
   }
 
-  const extracted = extractParametersFromTypeLiteral(ast, 'insertSchema');
+  const insertFields: Fields = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const field = value as FieldEntry;
 
-  const fields = extracted.map((prop) => {
-    // Check if this is a Generated field - make it optional
-    const isGenerated = isGeneratedType(prop.type);
-
-    // Make Union(T, null) fields optional and strip null from the type
-    // For INSERT, omitting a field = null in DB, so explicit null is unnecessary
-    const isOptional = isOptionalType(prop.type) || isGenerated;
-
-    // For generated fields, unwrap the base type from the Generated annotation
-    let fieldType = prop.type;
-    if (isGenerated) {
-      // Strip the Generated annotation to get the base type
-      fieldType = AST.annotations(prop.type, {
-        ...prop.type.annotations,
-        [GeneratedId]: undefined,
-      });
-    } else if (isOptionalType(prop.type)) {
-      fieldType = stripNullFromUnion(prop.type);
+    const columnSchemas = getColumnTypeSchemas(field);
+    if (columnSchemas) {
+      const insert = columnSchemas.insertSchema;
+      // `never` insert type (read-only IDs) -> omit the field entirely.
+      if (isNeverSchema(insert)) continue;
+      insertFields[key] = mutableIfArray(insert);
+      continue;
     }
 
-    return new AST.PropertySignature(
-      prop.name,
-      fieldType,
-      isOptional,
-      prop.isReadonly,
-      prop.annotations
-    );
-  });
+    if (isGeneratedField(field)) {
+      // Generated -> optional on insert, using the underlying base schema.
+      insertFields[key] = Schema.optional(mutableIfArray(unwrapGenerated(field)));
+      continue;
+    }
 
-  return Schema.asSchema(
-    Schema.make(new AST.TypeLiteral(fields, ast.indexSignatures, ast.annotations))
-  ) as Schema.Schema<MutableInsert<Type>, MutableInsert<Encoded>, never>;
+    if (isNullableUnion(field)) {
+      // Union(T, null) -> optional, with null stripped from the type (omitting = NULL).
+      insertFields[key] = Schema.optional(stripNull(field));
+      continue;
+    }
+
+    insertFields[key] = mutableIfArray(field);
+  }
+
+  return Schema.Struct(insertFields) as unknown as Schema.Codec<
+    MutableInsert<Type>,
+    MutableInsert<Encoded>,
+    never,
+    never
+  >;
 }
 
 /**
  * Create Updateable schema from base schema
  */
-export function Updateable<Type, Encoded>(schema: Schema.Schema<Type, Encoded>) {
-  const { ast } = schema;
-  if (!AST.isTypeLiteral(ast)) {
-    // Internal cast - return type annotation is what TypeScript uses for declaration emit
-    return Schema.asSchema(Schema.make(ast)) as Schema.Schema<
+export function Updateable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
+  const fields = getStructFields(schema);
+  if (fields === null) {
+    return schema as unknown as Schema.Codec<
       MutableUpdate<Type>,
       MutableUpdate<Encoded>,
+      never,
       never
     >;
   }
 
-  const extracted = extractParametersFromTypeLiteral(ast, 'updateSchema');
+  const updateFields: Fields = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const field = value as FieldEntry;
 
-  const res = new AST.TypeLiteral(
-    extracted.map(
-      (prop) =>
-        new AST.PropertySignature(
-          prop.name,
-          AST.Union.make([prop.type, new AST.UndefinedKeyword()]),
-          true,
-          prop.isReadonly,
-          prop.annotations
-        )
-    ),
-    ast.indexSignatures,
-    ast.annotations
-  );
+    let target: Schema.Top;
+    const columnSchemas = getColumnTypeSchemas(field);
+    if (columnSchemas) {
+      const update = columnSchemas.updateSchema;
+      // `never` update type -> omit the field entirely.
+      if (isNeverSchema(update)) continue;
+      target = update;
+    } else if (isGeneratedField(field)) {
+      target = unwrapGenerated(field);
+    } else {
+      target = field;
+    }
 
-  return Schema.asSchema(Schema.make(res)) as Schema.Schema<
+    // Every updateable field is optional.
+    updateFields[key] = Schema.optional(mutableIfArray(target));
+  }
+
+  return Schema.Struct(updateFields) as unknown as Schema.Codec<
     MutableUpdate<Type>,
     MutableUpdate<Encoded>,
+    never,
     never
   >;
 }
@@ -711,20 +710,18 @@ export function Updateable<Type, Encoded>(schema: Schema.Schema<Type, Encoded>) 
  *
  * @example type UserSelect = Selectable<User>;
  */
-export type Selectable<T extends Schema.Schema.All> = StripKyselyWrappersFromObject<
-  Schema.Schema.Type<T>
->;
+export type Selectable<T extends Schema.Top> = StripKyselyWrappersFromObject<Schema.Schema.Type<T>>;
 
 /**
  * Extract INSERT type from schema.
  * Omits fields with `never` insert type (read-only IDs, generated fields).
  * @example type UserInsert = Insertable<User>;
  */
-export type Insertable<T extends Schema.Schema.All> = CustomInsertable<Schema.Schema.Type<T>>;
+export type Insertable<T extends Schema.Top> = CustomInsertable<Schema.Schema.Type<T>>;
 
 /**
  * Extract UPDATE type from schema.
  * Omits fields with `never` update type, makes all fields optional.
  * @example type UserUpdate = Updateable<User>;
  */
-export type Updateable<T extends Schema.Schema.All> = CustomUpdateable<Schema.Schema.Type<T>>;
+export type Updateable<T extends Schema.Top> = CustomUpdateable<Schema.Schema.Type<T>>;

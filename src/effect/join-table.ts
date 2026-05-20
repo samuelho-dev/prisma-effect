@@ -7,7 +7,7 @@ import { toPascalCase, toSnakeCase } from '../utils/naming.js';
  *
  * Structure:
  * - Direct export with semantic snake_case field names
- * - Maps TypeScript names to database A/B columns using Schema.fromKey
+ * - Maps TypeScript names to database A/B columns using Schema.encodeKeys
  * - Uses columnType for read-only foreign keys (can't insert/update join table rows directly)
  * - No type exports - consumers use type utilities: Selectable<JoinTable>
  *
@@ -28,10 +28,12 @@ export function generateJoinTableSchema(joinTable: JoinTableInfo, _dmmf: DMMF.Do
   const modelASchemaType = `${toPascalCase(modelA)}Id`;
   const modelBSchemaType = `${toPascalCase(modelB)}Id`;
 
-  // Use columnType for read-only FK fields (can't insert/update join table rows directly)
-  // Schema.propertySignature + Schema.fromKey maps TypeScript name to database column
-  const columnAField = `  ${columnAFieldName}: Schema.propertySignature(columnType(${modelASchemaType}, Schema.Never, Schema.Never)).pipe(Schema.fromKey("A"))`;
-  const columnBField = `  ${columnBFieldName}: Schema.propertySignature(columnType(${modelBSchemaType}, Schema.Never, Schema.Never)).pipe(Schema.fromKey("B"))`;
+  // Use columnType for read-only FK fields (can't insert/update join table rows directly).
+  // The struct uses semantic field names; Schema.encodeKeys renames them to the
+  // database A/B columns on the encoded side (Effect 4 replacement for the old
+  // Schema.propertySignature(...).pipe(Schema.fromKey(...)) pattern).
+  const columnAField = `  ${columnAFieldName}: columnType(${modelASchemaType}, Schema.Never, Schema.Never)`;
+  const columnBField = `  ${columnBFieldName}: columnType(${modelBSchemaType}, Schema.Never, Schema.Never)`;
 
   // Use PascalCase for exported name (consistent with regular models)
   const pascalName = toPascalCase(relationName);
@@ -43,6 +45,6 @@ export function generateJoinTableSchema(joinTable: JoinTableInfo, _dmmf: DMMF.Do
 export const ${pascalName} = Schema.Struct({
 ${columnAField},
 ${columnBField},
-});
+}).pipe(Schema.encodeKeys({ ${columnAFieldName}: "A", ${columnBFieldName}: "B" }));
 export type ${pascalName} = typeof ${pascalName};`;
 }

@@ -589,7 +589,7 @@ describe('Prisma Parsing & Domain Logic', () => {
       expect(effectType).toBe('UserId');
     });
 
-    it('should use Schema.UUID for non-FK UUID fields', () => {
+    it('should use Schema.String.check(Schema.isUUID()) for non-FK UUID fields', () => {
       const idField = createMockField({
         name: 'id',
         type: 'String',
@@ -602,7 +602,7 @@ describe('Prisma Parsing & Domain Logic', () => {
 
       const effectType = mapFieldToEffectType(idField, dmmf, fkMap);
 
-      expect(effectType).toBe('Schema.UUID');
+      expect(effectType).toBe('Schema.String.check(Schema.isUUID())');
     });
 
     it('should prioritize @customType annotation over FK branded type', () => {

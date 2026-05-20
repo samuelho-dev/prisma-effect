@@ -14,8 +14,8 @@ import type { Insertable as InsertableType } from '../kysely/helpers';
  */
 describe('TS2589 regression: deep type instantiation', () => {
   // Branded ID types
-  const SellerId = Schema.UUID.pipe(Schema.brand('SellerId'));
-  const UserId = Schema.UUID.pipe(Schema.brand('UserId'));
+  const SellerId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('SellerId'));
+  const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
 
   // Enum-like types
   const SellerStatus = Schema.Literal('ACTIVE', 'INACTIVE', 'BANNED', 'PENDING');
@@ -23,31 +23,31 @@ describe('TS2589 regression: deep type instantiation', () => {
 
   // Realistic seller schema with 27 fields (matching production schema)
   const Seller = Schema.Struct({
-    activated_at: Schema.NullOr(Schema.DateFromSelf),
+    activated_at: Schema.NullOr(Schema.Date),
     banned_reason: Schema.NullOr(Schema.String),
     business_profile: Schema.NullOr(Schema.Unknown),
     business_type: Schema.NullOr(Schema.String),
     capabilities: Schema.NullOr(Schema.Unknown),
     card_payments_capability: Schema.NullOr(Schema.String),
     charges_enabled: generated(Schema.Boolean),
-    created_at: generated(Schema.DateFromSelf),
+    created_at: generated(Schema.Date),
     default_currency: generated(Schema.String),
     details_submitted: generated(Schema.Boolean),
     external_accounts: Schema.NullOr(Schema.Unknown),
     flagged_reason: Schema.NullOr(Schema.String),
     id: columnType(SellerId, Schema.Never, Schema.Never),
-    last_verification_attempt: Schema.NullOr(Schema.DateFromSelf),
+    last_verification_attempt: Schema.NullOr(Schema.Date),
     minimum_payout_threshold: generated(Schema.Number),
     payout_schedule: generated(PayoutSchedule),
     payouts_enabled: generated(Schema.Boolean),
     requirements: Schema.NullOr(Schema.Unknown),
     status: generated(SellerStatus),
-    stripe_account_id: Schema.NullOr(Schema.UUID),
-    tos_acceptance_date: Schema.NullOr(Schema.DateFromSelf),
+    stripe_account_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+    tos_acceptance_date: Schema.NullOr(Schema.Date),
     transfers_capability: Schema.NullOr(Schema.String),
-    updated_at: generated(Schema.DateFromSelf),
+    updated_at: generated(Schema.Date),
     user_id: UserId,
-    verification_due_by: Schema.NullOr(Schema.DateFromSelf),
+    verification_due_by: Schema.NullOr(Schema.Date),
     verification_fields_needed: generated(Schema.Array(Schema.String)),
     verification_status: Schema.NullOr(Schema.String),
   });

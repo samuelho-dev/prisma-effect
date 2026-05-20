@@ -48,19 +48,19 @@ import {
 // This is what triggers TS2589 in production codebases
 // ============================================================================
 
-const SellerId = Schema.UUID.pipe(Schema.brand('SellerId'));
+const SellerId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('SellerId'));
 type SellerId = typeof SellerId.Type;
 
-const UserId = Schema.UUID.pipe(Schema.brand('UserId'));
+const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
 type UserId = typeof UserId.Type;
 
-const ProductId = Schema.UUID.pipe(Schema.brand('ProductId'));
+const ProductId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('ProductId'));
 type ProductId = typeof ProductId.Type;
 
-const OrderId = Schema.UUID.pipe(Schema.brand('OrderId'));
+const OrderId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('OrderId'));
 type OrderId = typeof OrderId.Type;
 
-const PaymentId = Schema.UUID.pipe(Schema.brand('PaymentId'));
+const PaymentId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('PaymentId'));
 type PaymentId = typeof PaymentId.Type;
 
 // A realistic Seller schema with many generated/columnType fields
@@ -75,19 +75,19 @@ const Seller = Schema.Struct({
   payout_schedule: generated(Schema.String),
   minimum_payout_threshold: generated(Schema.Number),
   verification_fields_needed: generated(Schema.Array(Schema.String)),
-  activated_at: Schema.NullOr(Schema.DateFromSelf),
+  activated_at: Schema.NullOr(Schema.Date),
   banned_reason: Schema.NullOr(Schema.String),
   business_type: Schema.NullOr(Schema.String),
   card_payments_capability: Schema.NullOr(Schema.String),
   flagged_reason: Schema.NullOr(Schema.String),
-  last_verification_attempt: Schema.NullOr(Schema.DateFromSelf),
-  stripe_account_id: Schema.NullOr(Schema.UUID),
-  tos_acceptance_date: Schema.NullOr(Schema.DateFromSelf),
+  last_verification_attempt: Schema.NullOr(Schema.Date),
+  stripe_account_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  tos_acceptance_date: Schema.NullOr(Schema.Date),
   transfers_capability: Schema.NullOr(Schema.String),
-  verification_due_by: Schema.NullOr(Schema.DateFromSelf),
+  verification_due_by: Schema.NullOr(Schema.Date),
   verification_status: Schema.NullOr(Schema.String),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  created_at: generated(Schema.Date),
+  updated_at: generated(Schema.Date),
 });
 type SellerType = Schema.Schema.Type<typeof Seller>;
 
@@ -109,16 +109,16 @@ const Product = Schema.Struct({
   custom_timing: generated(Schema.NullOr(Schema.Boolean)),
   is_subscription_only: generated(Schema.Boolean),
   content: Schema.NullOr(Schema.String),
-  current_version_id: Schema.NullOr(Schema.UUID),
-  end_at: Schema.NullOr(Schema.DateFromSelf),
+  current_version_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  end_at: Schema.NullOr(Schema.Date),
   max_quantity: Schema.NullOr(Schema.Number),
-  start_at: Schema.NullOr(Schema.DateFromSelf),
-  subcategory_id: Schema.NullOr(Schema.UUID),
+  start_at: Schema.NullOr(Schema.Date),
+  subcategory_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
   suggested_price: Schema.NullOr(Schema.Number),
   thumbnail: Schema.NullOr(Schema.String),
-  category_id: Schema.NullOr(Schema.UUID),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  category_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  created_at: generated(Schema.Date),
+  updated_at: generated(Schema.Date),
 });
 type ProductType = Schema.Schema.Type<typeof Product>;
 
@@ -136,12 +136,12 @@ const Order = Schema.Struct({
   shipping_amount: generated(Schema.Number),
   email: Schema.NullOr(Schema.String),
   notes: Schema.NullOr(Schema.String),
-  stripe_payment_intent_id: Schema.NullOr(Schema.UUID),
-  completed_at: Schema.NullOr(Schema.DateFromSelf),
-  cancelled_at: Schema.NullOr(Schema.DateFromSelf),
-  refunded_at: Schema.NullOr(Schema.DateFromSelf),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  stripe_payment_intent_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  completed_at: Schema.NullOr(Schema.Date),
+  cancelled_at: Schema.NullOr(Schema.Date),
+  refunded_at: Schema.NullOr(Schema.Date),
+  created_at: generated(Schema.Date),
+  updated_at: generated(Schema.Date),
 });
 type OrderType = Schema.Schema.Type<typeof Order>;
 
@@ -153,15 +153,15 @@ const Payment = Schema.Struct({
   currency: Schema.String,
   status: generated(Schema.String),
   payment_method: generated(Schema.String),
-  stripe_payment_intent_id: Schema.NullOr(Schema.UUID),
-  stripe_charge_id: Schema.NullOr(Schema.UUID),
-  stripe_balance_transaction_id: Schema.NullOr(Schema.UUID),
+  stripe_payment_intent_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  stripe_charge_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
+  stripe_balance_transaction_id: Schema.NullOr(Schema.String.check(Schema.isUUID())),
   failure_code: Schema.NullOr(Schema.String),
   failure_message: Schema.NullOr(Schema.String),
   refund_amount: Schema.NullOr(Schema.Number),
-  refunded_at: Schema.NullOr(Schema.DateFromSelf),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  refunded_at: Schema.NullOr(Schema.Date),
+  created_at: generated(Schema.Date),
+  updated_at: generated(Schema.Date),
 });
 type PaymentType = Schema.Schema.Type<typeof Payment>;
 
@@ -321,8 +321,8 @@ const PaymentWithJson = Schema.Struct({
   last_payment_error: Schema.NullOr(columnType(JsonValue, JsonValue, JsonValue)),
   metadata: Schema.NullOr(columnType(JsonValue, JsonValue, JsonValue)),
   raw_response: columnType(JsonValue, JsonValue, JsonValue),
-  created_at: generated(Schema.DateFromSelf),
-  updated_at: generated(Schema.DateFromSelf),
+  created_at: generated(Schema.Date),
+  updated_at: generated(Schema.Date),
 });
 
 interface JsonTestDB {

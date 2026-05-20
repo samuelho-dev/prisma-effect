@@ -43,8 +43,8 @@ const User = Schema.Struct({
   id: columnType(UserId, Schema.Never, Schema.Never), // Read-only ID
   email: Schema.String, // Required field
   name: Schema.NullOr(Schema.String), // Nullable field
-  createdAt: generated(Schema.DateFromSelf), // Generated field (optional on insert)
-  updatedAt: generated(Schema.DateFromSelf), // Generated field (optional on insert)
+  createdAt: generated(Schema.Date), // Generated field (optional on insert)
+  updatedAt: generated(Schema.Date), // Generated field (optional on insert)
 });
 type User = typeof User;
 

@@ -4,18 +4,21 @@ import { generateFileHeader } from '../utils/codegen.js';
 import { toPascalCase } from '../utils/naming.js';
 
 /**
- * Generate TypeScript enum + Effect Schema.Enums wrapper
+ * Generate TypeScript enum + Effect Schema.Enum wrapper
  *
  * Output pattern:
- * - Native TS enum with SCREAMING_SNAKE_CASE (internal, for Schema.Enums)
+ * - Native TS enum with SCREAMING_SNAKE_CASE (internal, for Schema.Enum)
  * - PascalCase export IS the Schema (so it works in Schema.Struct)
  * - Type alias with same name (value + type pattern)
  */
 export function generateEnumSchema(enumDef: DMMF.DatamodelEnum) {
-  // Raw enum keeps original name (usually SCREAMING_SNAKE_CASE)
-  const enumName = enumDef.name;
-  // PascalCase name is exported as BOTH the Schema value AND the type
+  // PascalCase name is exported as BOTH the Schema value AND the type.
   const pascalName = toPascalCase(enumDef.name);
+  // The native TS enum keeps its original Prisma name (usually SCREAMING_SNAKE).
+  // But when that already equals the PascalCase const (e.g. `Role` -> `Role`),
+  // TypeScript forbids the enum/const identifier from merging, so suffix the
+  // enum with `Enum` (`Role` -> internal `RoleEnum`) to keep them distinct.
+  const enumName = enumDef.name === pascalName ? `${pascalName}Enum` : enumDef.name;
 
   // Generate native TypeScript enum members
   const enumMembers = enumDef.values
@@ -32,7 +35,7 @@ export function generateEnumSchema(enumDef: DMMF.DatamodelEnum) {
 ${enumMembers}
 }
 
-export const ${pascalName} = Schema.Enums(${enumName});
+export const ${pascalName} = Schema.Enum(${enumName});
 export type ${pascalName} = Schema.Schema.Type<typeof ${pascalName}>;`;
 }
 

@@ -42,31 +42,32 @@ export function applyKyselyHelpers(fieldType: string, field: DMMF.Field, modelNa
 }
 
 /**
- * Apply @map directive wrapper if field has different DB name
+ * Compute the encoded-key rename for a `@map`'d field, or null when the field
+ * keeps its own name.
+ *
+ * Effect 4 removed `Schema.propertySignature(...).pipe(Schema.fromKey(...))`.
+ * Field-key renames are now expressed at the struct level via
+ * `Schema.encodeKeys({ tsName: "db_name" })`, so `generateModelSchema` collects
+ * these mappings and appends a single `encodeKeys` call to the struct.
  */
-export function applyMapDirective(fieldType: string, field: DMMF.Field) {
-  const dbName = getFieldDbName(field);
+export function fieldKeyMapping(field: DMMF.Field): { tsName: string; dbName: string } | null {
   if (field.dbName && field.dbName !== field.name) {
-    return `Schema.propertySignature(${fieldType}).pipe(Schema.fromKey("${dbName}"))`;
+    return { tsName: field.name, dbName: getFieldDbName(field) };
   }
-  return fieldType;
+  return null;
 }
 
 /**
- * Build complete field type with Kysely helpers and @map
- * Order: base type → Kysely helpers → @map wrapper
+ * Build complete field type with Kysely helpers (columnType / generated).
+ *
+ * `@map` renames are no longer applied here — they are collected by the caller
+ * and emitted as a struct-level `Schema.encodeKeys(...)` (see `fieldKeyMapping`).
  * @param baseFieldType - The base Effect Schema type
  * @param field - The Prisma field
  * @param modelName - Optional model name for branded ID generation
  */
 export function buildKyselyFieldType(baseFieldType: string, field: DMMF.Field, modelName?: string) {
-  // Step 1: Apply Kysely helpers (domain transformation)
-  let fieldType = applyKyselyHelpers(baseFieldType, field, modelName);
-
-  // Step 2: Apply @map wrapper (structural transformation)
-  fieldType = applyMapDirective(fieldType, field);
-
-  return fieldType;
+  return applyKyselyHelpers(baseFieldType, field, modelName);
 }
 
 /**

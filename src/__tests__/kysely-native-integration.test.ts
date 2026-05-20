@@ -133,7 +133,7 @@ describe('Kysely Native Integration', () => {
 
       // Should generate branded ID schemas
       expect(typesContent).toMatch(
-        /export const UserId = Schema\.UUID\.pipe\(Schema\.brand\("UserId"\)\)/
+        /export const UserId = Schema\.String\.check\(Schema\.isUUID\(\)\)\.pipe\(Schema\.brand\("UserId"\)\)/
       );
 
       // Should export type alias
@@ -146,20 +146,22 @@ describe('Kysely Native Integration', () => {
   });
 
   describe('Effect Schema Type Mapping', () => {
-    it('should map UUID to Schema.UUID for Effect schemas', async () => {
+    it('should map UUID to Schema.String.check(Schema.isUUID()) for Effect schemas', async () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
-      // UUID fields use Schema.UUID with branding for IDs
-      expect(typesContent).toMatch(/Schema\.UUID\.pipe\(Schema\.brand/);
-      // FK fields use Schema.UUID (not branded since no FK relation in this schema)
-      expect(typesContent).toMatch(/author_id:\s*Schema\.UUID/);
+      // UUID fields use Schema.String.check(Schema.isUUID()) with branding for IDs
+      expect(typesContent).toMatch(
+        /Schema\.String\.check\(Schema\.isUUID\(\)\)\.pipe\(Schema\.brand/
+      );
+      // Non-relation @db.Uuid fields use the bare UUID check (not branded)
+      expect(typesContent).toMatch(/author_id:\s*Schema\.String\.check\(Schema\.isUUID\(\)\)/);
     });
 
-    it('should map DateTime to Schema.DateFromSelf for Effect schemas', async () => {
+    it('should map DateTime to Schema.Date for Effect schemas', async () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
-      // DateTime fields use Schema.DateFromSelf with generated() wrapper
-      expect(typesContent).toContain('generated(Schema.DateFromSelf)');
+      // DateTime fields use Schema.Date with generated() wrapper
+      expect(typesContent).toContain('generated(Schema.Date)');
     });
 
     it('should map Boolean correctly for Effect schemas', async () => {

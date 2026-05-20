@@ -36,7 +36,7 @@ Entry: `src/generator/index.ts` exposes the Prisma generator manifest and delega
 Generators:
 
 - `src/effect/generator.ts` — model schemas + branded IDs
-- `src/effect/enum.ts` — Prisma enums → `Schema.Literal`
+- `src/effect/enum.ts` — Prisma enums → `Schema.Enum`
 - `src/effect/join-table.ts` — implicit M2M join tables
 - `src/kysely/generator.ts` — `DB` interface
 
@@ -46,7 +46,7 @@ Support: `src/utils/file-manager.ts` (FS), `src/utils/templates.ts` (Prettier fo
 
 Three files in the configured output directory:
 
-- **enums.ts** — `Schema.Literal` per Prisma enum (respects `@map`)
+- **enums.ts** — `Schema.Enum` per Prisma enum (respects `@map`)
 - **types.ts** — direct exports (no underscore prefix, no wrapper functions):
   - Branded ID schema + type per model
   - Model `Schema.Struct` + type alias
@@ -56,13 +56,13 @@ Three files in the configured output directory:
 ## Generated shape
 
 ```typescript
-export const UserId = Schema.UUID.pipe(Schema.brand("UserId"));
+export const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
 export type UserId = typeof UserId.Type;
 
 export const User = Schema.Struct({
-  id: columnType(Schema.UUID, Schema.Never, Schema.Never),
+  id: columnType(UserId, Schema.Never, Schema.Never),
   email: Schema.String,
-  createdAt: generated(Schema.DateFromSelf),
+  createdAt: generated(Schema.Date),
 });
 export type User = typeof User;
 
@@ -85,7 +85,7 @@ Consumers use `Selectable<typeof User>` / `Insertable<typeof User>` / `Updateabl
 
 ## Implicit M2M join tables
 
-Prisma stores `A`/`B` columns; we emit semantic snake_case fields via `Schema.propertySignature(...).pipe(Schema.fromKey("A"))`. Join tables get NO branded ID (composite key).
+Prisma stores `A`/`B` columns; we emit semantic snake_case fields on the struct, then map them to the DB columns with a struct-level `.pipe(Schema.encodeKeys({ <model_a>_id: "A", <model_b>_id: "B" }))`. Join tables get NO branded ID (composite key).
 
 ## UUID detection
 
@@ -97,17 +97,17 @@ Prisma stores `A`/`B` columns; we emit semantic snake_case fields via `Schema.pr
 
 ## Type mappings
 
-| Prisma      | Effect                | Notes              |
-| ----------- | --------------------- | ------------------ |
-| String      | `Schema.String`       | UUID → `Schema.UUID` |
-| Int / Float | `Schema.Number`       |                    |
-| BigInt      | `Schema.BigInt`       |                    |
-| Decimal     | `Schema.String`       | precision          |
-| Boolean     | `Schema.Boolean`      |                    |
-| DateTime    | `Schema.DateFromSelf` |                    |
-| Json        | `Schema.Unknown`      |                    |
-| Bytes       | `Schema.Uint8Array`   |                    |
-| Enum        | imported enum schema  |                    |
+| Prisma      | Effect               | Notes                                         |
+| ----------- | -------------------- | --------------------------------------------- |
+| String      | `Schema.String`      | UUID → `Schema.String.check(Schema.isUUID())` |
+| Int / Float | `Schema.Number`      |                                               |
+| BigInt      | `Schema.BigInt`      | native bigint encode (no string coercion)     |
+| Decimal     | `Schema.String`      | precision                                     |
+| Boolean     | `Schema.Boolean`     |                                               |
+| DateTime    | `Schema.Date`        | native Date both sides (Effect 4)             |
+| Json        | `Schema.Unknown`     |                                               |
+| Bytes       | `Schema.Uint8Array`  |                                               |
+| Enum        | imported enum schema | `Schema.Enum(...)`                            |
 
 Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
@@ -120,18 +120,36 @@ Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
 ## Package exports
 
-| Entry          | Contents                                          |
-| -------------- | ------------------------------------------------- |
-| `.`            | `Selectable`, `Insertable`, `Updateable`, helpers |
-| `./generator`  | Prisma generator binary entry                     |
-| `./kysely`     | `getSchemas`, `columnType`, `generated`, types    |
-| `./error`      | `NotFoundError`, `QueryError`, `DatabaseError`    |
-| `./runtime`    | All runtime utilities                             |
+| Entry         | Contents                                          |
+| ------------- | ------------------------------------------------- |
+| `.`           | `Selectable`, `Insertable`, `Updateable`, helpers |
+| `./generator` | Prisma generator binary entry                     |
+| `./kysely`    | `getSchemas`, `columnType`, `generated`, types    |
+| `./error`     | `NotFoundError`, `QueryError`, `DatabaseError`    |
+| `./runtime`   | All runtime utilities                             |
+
+## Testing patterns
+
+Three-tier canonical pattern:
+
+1. Pure schema decode (`Schema.decodeUnknownSync`) for type-level coverage.
+2. **pglite + `kysely-pglite-dialect`** for data-layer integration tests —
+   default tier. See `src/__tests__/helpers/pglite-db.ts` for the
+   `Layer.effect` boilerplate and `src/__tests__/integration/` for the
+   roundtrip example. Run with `bun run test:integration`.
+3. Testcontainers Postgres only when pglite can't host the feature
+   (extensions, multi-process, etc.).
+
+Errors raised from data-layer code should be one of `NotFoundError`,
+`QueryError`, `DatabaseError` from `prisma-effect-kysely/error` so callers
+can `Effect.catchTag` cleanly.
 
 ## Working in this repo
 
-- Run `bun run test` (280 tests) to baseline before changes
+- Run `bun run test` (350 unit + DMMF tests) and `bun run test:integration` (pglite roundtrip) to baseline before changes
 - Generator must be rebuilt before `prisma generate` picks up changes
 - Test fixtures: `src/__tests__/fixtures/test.prisma`
 - Generated headers include timestamp + edit warning
 - Direct exports only — never reintroduce underscore prefixes or wrapper functions in generated code (`getSchemas` remains in runtime API, not in output)
+- Run `bun run test:emit` after touching any generator emit string — it generates against the fixture and type-checks the emitted code against the installed Effect (unit tests only string-match, they don't compile output)
+- `effect` targets **4.x (beta)**, peer dep `^4.0.0-beta`, dev pin `4.0.0-beta.68`. `src/kysely/helpers.ts` uses the public `Schema.Struct.fields` API (not `effect/SchemaAST` internals — those were reworked in v4). Key v4 names: `Schema.Codec` (was `Schema.Schema`), `Schema.Top` (was `Schema.Schema.All`), `Schema.revealCodec` (was `asSchema`), `.annotate()` (was `.annotations()`), `Schema.Date` (was `DateFromSelf`), `Schema.Union([...])` (was variadic), `Schema.encodeKeys` (was `propertySignature(...).pipe(fromKey(...))`).

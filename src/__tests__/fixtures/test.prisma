@@ -190,13 +190,13 @@ model AnnotationTest {
   /// @customType(Schema.String)
   email String @unique
 
-  /// @customType(Schema.Number.pipe(Schema.positive()))
+  /// @customType(Schema.Number.check(Schema.isGreaterThan(0)))
   age Int
 
   /// @customType(Schema.String.pipe(Schema.brand('UserId')))
   userId String
 
-  /// @customType(Schema.Array(Schema.Number).pipe(Schema.itemsCount(3)))
+  /// @customType(Schema.Array(Schema.Number).check(Schema.isLengthBetween(3, 3)))
   coordinates Int[]
 
   createdAt DateTime @default(now())

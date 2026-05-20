@@ -1,17 +1,22 @@
 import { Schema } from 'effect';
-import * as AST from 'effect/SchemaAST';
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import { columnType, generated, Insertable, Updateable, Selectable } from '../kysely/helpers';
 
-const getPropertyNames = (schema: Schema.Schema<unknown, unknown>) => {
-  const ast = schema.ast;
-  if (!AST.isTypeLiteral(ast)) return [];
-  return ast.propertySignatures.map((prop) => String(prop.name));
+// Read struct field names via the public `fields` record (Effect 4 dropped the
+// `effect/SchemaAST` TypeLiteral.propertySignatures shape this test used).
+// encodeKeys-wrapped schemas (join tables) are decodeTo nodes — `.to` is the
+// decoded/semantic struct, `.from` is the encoded DB-column struct.
+const getPropertyNames = (schema: Schema.Top): string[] => {
+  const direct = (schema as { fields?: Record<string, unknown> }).fields;
+  if (direct) return Object.keys(direct);
+  const to = (schema as { to?: { fields?: Record<string, unknown> } }).to;
+  if (to?.fields) return Object.keys(to.fields);
+  return [];
 };
 
 const User = Schema.Struct({
-  id: columnType(Schema.UUID, Schema.Never, Schema.Never),
-  createdAt: generated(Schema.DateFromSelf),
+  id: columnType(Schema.String.check(Schema.isUUID()), Schema.Never, Schema.Never),
+  createdAt: generated(Schema.Date),
   name: Schema.String,
   email: Schema.String,
 });

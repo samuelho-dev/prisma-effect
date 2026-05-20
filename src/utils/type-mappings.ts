@@ -12,11 +12,12 @@
  * Prisma scalar type mapping to Effect Schema types
  * Uses const assertion for type safety
  *
- * Note: DateTime uses Schema.DateFromSelf (not Schema.Date) so that:
+ * Note: DateTime uses Schema.Date so that:
  * - Type = Date (runtime)
  * - Encoded = Date (database)
  * This allows Kysely to work with native Date objects directly.
- * Schema.Date would encode to string, requiring ISO string conversions.
+ * (In Effect 4, Schema.Date is the native-Date schema — no ISO string coercion;
+ * it replaces Effect 3's Schema.DateFromSelf.)
  */
 export const PRISMA_TO_EFFECT_SCHEMA = {
   String: 'Schema.String',
@@ -25,7 +26,7 @@ export const PRISMA_TO_EFFECT_SCHEMA = {
   BigInt: 'Schema.BigInt',
   Decimal: 'Schema.String', // For precision
   Boolean: 'Schema.Boolean',
-  DateTime: 'Schema.DateFromSelf', // Native Date type for Kysely compatibility
+  DateTime: 'Schema.Date', // Native Date type for Kysely compatibility
   Json: 'JsonValue', // Recursive JSON type — prevents null absorption in NullOr
   Bytes: 'Schema.Uint8Array',
 } as const;

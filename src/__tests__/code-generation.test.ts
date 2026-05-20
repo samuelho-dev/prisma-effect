@@ -176,7 +176,7 @@ describe('Code Generation - E2E and Validation', () => {
     it('should generate branded ID schemas for models with @id field', () => {
       // Branded ID schemas should be generated for each model with an ID field
       expect(typesContent).toMatch(
-        /const UserId = Schema\.UUID\.pipe\(Schema\.brand\("UserId"\)\)/
+        /const UserId = Schema\.String\.check\(Schema\.isUUID\(\)\)\.pipe\(Schema\.brand\("UserId"\)\)/
       );
     });
 
@@ -272,8 +272,9 @@ describe('Code Generation - E2E and Validation', () => {
       typesContent = readFileSync(join(testOutputPath, 'types.ts'), 'utf-8');
     });
 
-    it('should use propertySignature with fromKey for @map fields', () => {
-      expect(typesContent).toMatch(/Schema\.propertySignature\([^)]+\)\.pipe\(Schema\.fromKey/);
+    it('should use encodeKeys to map @map field names to DB columns', () => {
+      // Effect 4: field renames are a struct-level Schema.encodeKeys({ tsName: "db_name" })
+      expect(typesContent).toMatch(/Schema\.encodeKeys\(\{[^}]*mappedField:\s*"db_mapped_field"/);
     });
 
     it('should use @@map for table names in DB interface', () => {
@@ -324,7 +325,7 @@ describe('Code Generation - E2E and Validation', () => {
       expect(result).toContain('Schema.brand("TodoId")');
     });
 
-    it('should generate Schema.BigIntFromSelf for BigInt @id field', () => {
+    it('should generate Schema.BigInt for BigInt @id field', () => {
       const model = createMockModel({ name: 'Counter' });
       const fields = [
         createMockField({ name: 'id', type: 'BigInt', isId: true, hasDefaultValue: true }),
@@ -334,12 +335,12 @@ describe('Code Generation - E2E and Validation', () => {
       const generator = new EffectGenerator(createMockDMMF({ models: [model] }));
       const result = generator.generateBrandedIdSchema(model, fields);
 
-      expect(result).toContain('Schema.BigIntFromSelf');
+      expect(result).toContain('Schema.BigInt');
       expect(result).not.toContain('Schema.String');
       expect(result).toContain('Schema.brand("CounterId")');
     });
 
-    it('should generate Schema.UUID for UUID @id field', () => {
+    it('should generate Schema.String.check(Schema.isUUID()) for UUID @id field', () => {
       const model = createMockModel({ name: 'User' });
       const fields = [
         createMockField({
@@ -354,7 +355,7 @@ describe('Code Generation - E2E and Validation', () => {
       const generator = new EffectGenerator(createMockDMMF({ models: [model] }));
       const result = generator.generateBrandedIdSchema(model, fields);
 
-      expect(result).toContain('Schema.UUID');
+      expect(result).toContain('Schema.String.check(Schema.isUUID())');
       expect(result).toContain('Schema.brand("UserId")');
     });
 
@@ -368,7 +369,7 @@ describe('Code Generation - E2E and Validation', () => {
       const result = generator.generateBrandedIdSchema(model, fields);
 
       expect(result).toContain('Schema.String');
-      expect(result).not.toContain('Schema.UUID');
+      expect(result).not.toContain('Schema.String.check(Schema.isUUID())');
       expect(result).toContain('Schema.brand("ItemId")');
     });
   });
@@ -429,7 +430,9 @@ describe('Code Generation - E2E and Validation', () => {
       // Schema is exported directly
       expect(typesContent).toMatch(/export const User = Schema\.Struct/);
       // IdSchema is exported for branded types
-      expect(typesContent).toMatch(/export const UserId = Schema\.UUID\.pipe\(Schema\.brand/);
+      expect(typesContent).toMatch(
+        /export const UserId = Schema\.String\.check\(Schema\.isUUID\(\)\)\.pipe\(Schema\.brand/
+      );
       // Type alias for type usage
       expect(typesContent).toMatch(/export type User = typeof User/);
     });

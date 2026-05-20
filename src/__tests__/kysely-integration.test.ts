@@ -104,10 +104,10 @@ describe('Kysely Integration - Functional Tests', () => {
       typesContent = readFileSync(join(testOutputPath, 'types.ts'), 'utf-8');
     });
 
-    it('should use propertySignature with fromKey for @map fields', () => {
-      // Should use Schema.propertySignature(...).pipe(Schema.fromKey("db_name"))
-      expect(typesContent).toMatch(/Schema\.propertySignature/);
-      expect(typesContent).toMatch(/\.pipe\(\s*Schema\.fromKey\(/);
+    it('should use encodeKeys to map @map field names to DB columns', () => {
+      // Effect 4: struct-level Schema.encodeKeys({ tsName: "db_name" }) replaces
+      // the per-field Schema.propertySignature(...).pipe(Schema.fromKey(...)).
+      expect(typesContent).toMatch(/\.pipe\(\s*Schema\.encodeKeys\(/);
     });
 
     it('should use @@map for table names in DB interface', () => {
