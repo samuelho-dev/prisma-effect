@@ -4,5 +4,7 @@
   "initialVersions": {
     "prisma-effect-kysely": "5.5.0"
   },
-  "changesets": []
+  "changesets": [
+    "effect-v4-beta"
+  ]
 }
