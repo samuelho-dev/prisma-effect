@@ -61,6 +61,8 @@ export default tseslint.config(
       '**/*.d.ts',
       'src/test-output*/**',
       'src/__tests__/generated/**',
+      // Vendored read-only Effect v4 source (git subtree, agent reference only)
+      'repos/**',
     ],
   }
 );

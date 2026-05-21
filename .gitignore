@@ -11,7 +11,9 @@ coverage/
 *.lcov
 
 # IDE
-.vscode/
+.vscode/*
+# but share the repos/ editor excludes for the vendored subtree (see AGENTS.md)
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
