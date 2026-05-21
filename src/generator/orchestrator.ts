@@ -2,6 +2,7 @@ import type { GeneratorOptions } from '@prisma/generator-helper';
 import { EffectGenerator } from '../effect/generator.js';
 import { KyselyGenerator } from '../kysely/generator.js';
 import { PrismaGenerator } from '../prisma/generator.js';
+import { detectLegacyEffectV3Syntax, extractEffectTypeOverride } from '../utils/annotations.js';
 import { FileManager } from '../utils/file-manager.js';
 import {
   type GeneratorConfig,
@@ -47,6 +48,7 @@ export class GeneratorOrchestrator {
    */
   async generate(options: GeneratorOptions) {
     this.logStart(options);
+    this.warnLegacyAnnotations(options);
 
     // Check if multi-domain mode is enabled
     if (isMultiDomainEnabled(this.config)) {
@@ -241,6 +243,32 @@ export class GeneratorOrchestrator {
       if (isScaffoldingEnabled(this.config)) {
         // Scaffolding logic would go here if needed
       }
+    }
+  }
+
+  /**
+   * Scan every field's `@customType(...)` annotation for Effect 3 syntax and warn
+   * (to stderr, which Prisma surfaces to the user). `@customType` strings are
+   * emitted verbatim, so a v3 expression silently breaks once compiled against
+   * Effect 4. We never rewrite — only point at the v4 replacement.
+   */
+  private warnLegacyAnnotations(options: GeneratorOptions) {
+    const warnings: string[] = [];
+    for (const model of options.dmmf.datamodel.models) {
+      for (const field of model.fields) {
+        const override = extractEffectTypeOverride(field);
+        if (!override) continue;
+        for (const hint of detectLegacyEffectV3Syntax(override)) {
+          warnings.push(`  ${model.name}.${field.name}: ${hint}`);
+        }
+      }
+    }
+
+    if (warnings.length > 0) {
+      console.warn(
+        `[prisma-effect-kysely] @customType annotations use Effect 3 syntax that does not ` +
+          `compile against Effect 4. Update them in your Prisma schema:\n${warnings.join('\n')}`
+      );
     }
   }
 

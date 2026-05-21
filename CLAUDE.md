@@ -50,7 +50,7 @@ Three files in the configured output directory:
 - **types.ts** — direct exports (no underscore prefix, no wrapper functions):
   - Branded ID schema + type per model
   - Model `Schema.Struct` + type alias
-  - `DB` interface using `Selectable<Model>` per table (respects `@@map`)
+  - `DB` interface using `Schema.Schema.Type<typeof Model>` per table (preserves the `__select__/__insert__/__update__` brands Kysely needs; respects `@@map`)
 - **index.ts** — re-exports
 
 ## Generated shape
@@ -67,7 +67,7 @@ export const User = Schema.Struct({
 export type User = typeof User;
 
 export interface DB {
-  User: Selectable<User>;
+  User: Schema.Schema.Type<typeof User>;
 }
 ```
 
@@ -97,36 +97,37 @@ Prisma stores `A`/`B` columns; we emit semantic snake_case fields on the struct,
 
 ## Type mappings
 
-| Prisma      | Effect               | Notes                                         |
-| ----------- | -------------------- | --------------------------------------------- |
-| String      | `Schema.String`      | UUID → `Schema.String.check(Schema.isUUID())` |
-| Int / Float | `Schema.Number`      |                                               |
-| BigInt      | `Schema.BigInt`      | native bigint encode (no string coercion)     |
-| Decimal     | `Schema.String`      | precision                                     |
-| Boolean     | `Schema.Boolean`     |                                               |
-| DateTime    | `Schema.Date`        | native Date both sides (Effect 4)             |
-| Json        | `Schema.Unknown`     |                                               |
-| Bytes       | `Schema.Uint8Array`  |                                               |
-| Enum        | imported enum schema | `Schema.Enum(...)`                            |
+| Prisma      | Effect                | Notes                                         |
+| ----------- | --------------------- | --------------------------------------------- |
+| String      | `Schema.String`       | UUID → `Schema.String.check(Schema.isUUID())` |
+| Int / Float | `Schema.Number`       |                                               |
+| BigInt      | `Schema.BigInt`       | native bigint encode (no string coercion)     |
+| Decimal     | `Schema.String`       | precision                                     |
+| Boolean     | `Schema.Boolean`      |                                               |
+| DateTime    | `Schema.Date`         | native Date both sides (Effect 4)             |
+| Json        | recursive `JsonValue` | from `prisma-effect-kysely`                   |
+| Bytes       | `Schema.Uint8Array`   |                                               |
+| Enum        | imported enum schema  | `Schema.Enum(...)`                            |
 
 Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
 ## Type safety principles
 
-- Zero coercion — exact DMMF types, no `as` casts
+- Zero coercion in DMMF→type mapping — exact DMMF types, no string parsing of types
+- The runtime `Selectable`/`Insertable`/`Updateable` helpers use `as unknown as` casts (load-bearing: a dynamically-rebuilt `Schema.Struct` has no statically-checkable shape — see the note above the Schema Functions section in `helpers.ts`); generated OUTPUT contains no casts
 - UUID detection from DMMF, not string parsing
 - Field defaults validated via DMMF structure
 - Strict mode (tsconfig)
 
 ## Package exports
 
-| Entry         | Contents                                          |
-| ------------- | ------------------------------------------------- |
-| `.`           | `Selectable`, `Insertable`, `Updateable`, helpers |
-| `./generator` | Prisma generator binary entry                     |
-| `./kysely`    | `getSchemas`, `columnType`, `generated`, types    |
-| `./error`     | `NotFoundError`, `QueryError`, `DatabaseError`    |
-| `./runtime`   | All runtime utilities                             |
+| Entry         | Contents                                                                              |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `.`           | `Selectable`, `Insertable`, `Updateable`, helpers                                     |
+| `./generator` | Prisma generator binary entry                                                         |
+| `./kysely`    | `columnType`, `generated`, `JsonValue`, `Selectable`/`Insertable`/`Updateable`, types |
+| `./error`     | `NotFoundError`, `QueryError`, `DatabaseError`                                        |
+| `./runtime`   | All runtime utilities                                                                 |
 
 ## Testing patterns
 
@@ -150,6 +151,8 @@ can `Effect.catchTag` cleanly.
 - Generator must be rebuilt before `prisma generate` picks up changes
 - Test fixtures: `src/__tests__/fixtures/test.prisma`
 - Generated headers include timestamp + edit warning
-- Direct exports only — never reintroduce underscore prefixes or wrapper functions in generated code (`getSchemas` remains in runtime API, not in output)
+- Direct exports only — generated code exports schemas directly (`export const User = Schema.Struct(...)`); never reintroduce underscore prefixes or wrapper functions in the output
 - Run `bun run test:emit` after touching any generator emit string — it generates against the fixture and type-checks the emitted code against the installed Effect (unit tests only string-match, they don't compile output)
-- `effect` targets **4.x (beta)**, peer dep `^4.0.0-beta`, dev pin `4.0.0-beta.68`. `src/kysely/helpers.ts` uses the public `Schema.Struct.fields` API (not `effect/SchemaAST` internals — those were reworked in v4). Key v4 names: `Schema.Codec` (was `Schema.Schema`), `Schema.Top` (was `Schema.Schema.All`), `Schema.revealCodec` (was `asSchema`), `.annotate()` (was `.annotations()`), `Schema.Date` (was `DateFromSelf`), `Schema.Union([...])` (was variadic), `Schema.encodeKeys` (was `propertySignature(...).pipe(fromKey(...))`).
+- `effect` targets **4.x (beta)**, peer dep `^4.0.0-beta`, dev pin `4.0.0-beta.70`. `src/kysely/helpers.ts` uses the public `Schema.Struct.fields` API (not `effect/SchemaAST` internals — those were reworked in v4). Key v4 names: `Schema.Codec` (was `Schema.Schema`), `Schema.Top` (was `Schema.Schema.All`), `Schema.revealCodec` (was `asSchema`), `.annotate()` (was `.annotations()`), `Schema.Date` (was `DateFromSelf`), `Schema.Union([...])` (was variadic), `Schema.encodeKeys` (was `propertySignature(...).pipe(fromKey(...))`).
+- `@customType(...)` strings are emitted verbatim and must be valid Effect 4 syntax. `detectLegacyEffectV3Syntax()` in `src/utils/annotations.ts` warns (never rewrites) on known v3 patterns at generate time. v3 filters → `.check(Schema.is*)`; variadic `Union`/`Tuple`/multi-`Literal` → array form.
+- Consumers must pin the exact `6.0.0-next.x` version — a `"*"` range resolves to the stable `5.x` line (npm/pnpm exclude prereleases from ranges), which silently pulls the v3 types.

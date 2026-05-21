@@ -434,13 +434,6 @@ type IsOptionalInsert<T> =
   undefined extends ExtractInsertType<T> ? true : null extends ExtractInsertType<T> ? true : false;
 
 /**
- * Extract the base type without null/undefined for optional fields.
- * Keeps the type as-is (including null) for the property type,
- * since the optionality is expressed via `?` not the type itself.
- */
-type ExtractInsertBaseType<T> = ExtractInsertType<T>;
-
-/**
  * Extract the update type from a field using the __update__ phantom property:
  * - ColumnType<S, I, U> -> U (via __update__)
  * - Generated<T> -> T (via __update__)
@@ -473,7 +466,7 @@ type CustomInsertable<T> =
       ? never
       : IsOptionalInsert<T[K]> extends true
         ? K
-        : never]?: ExtractInsertBaseType<T[K]>;
+        : never]?: ExtractInsertType<T[K]>;
   };
 
 /**
@@ -484,10 +477,6 @@ type CustomUpdateable<T> = {
     T[K]
   >;
 };
-
-// Legacy aliases for backwards compatibility
-type MutableInsert<Type> = CustomInsertable<Type>;
-type MutableUpdate<Type> = CustomUpdateable<Type>;
 
 // ============================================================================
 // Stripping Type Utilities (needed for Selectable function return type)
@@ -606,8 +595,8 @@ export function Insertable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
   const fields = getStructFields(schema);
   if (fields === null) {
     return schema as unknown as Schema.Codec<
-      MutableInsert<Type>,
-      MutableInsert<Encoded>,
+      CustomInsertable<Type>,
+      CustomInsertable<Encoded>,
       never,
       never
     >;
@@ -645,8 +634,8 @@ export function Insertable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
   }
 
   return Schema.Struct(insertFields) as unknown as Schema.Codec<
-    MutableInsert<Type>,
-    MutableInsert<Encoded>,
+    CustomInsertable<Type>,
+    CustomInsertable<Encoded>,
     never,
     never
   >;
@@ -659,8 +648,8 @@ export function Updateable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
   const fields = getStructFields(schema);
   if (fields === null) {
     return schema as unknown as Schema.Codec<
-      MutableUpdate<Type>,
-      MutableUpdate<Encoded>,
+      CustomUpdateable<Type>,
+      CustomUpdateable<Encoded>,
       never,
       never
     >;
@@ -688,8 +677,8 @@ export function Updateable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
   }
 
   return Schema.Struct(updateFields) as unknown as Schema.Codec<
-    MutableUpdate<Type>,
-    MutableUpdate<Encoded>,
+    CustomUpdateable<Type>,
+    CustomUpdateable<Encoded>,
     never,
     never
   >;

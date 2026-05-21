@@ -22,10 +22,17 @@ bun add prisma-effect-kysely@next effect@beta
 
 > **Effect 4 support is a pre-release.** It requires `effect@^4.0.0-beta` and is
 > published under the `next` dist-tag, not `latest`. It is **tested against
-> `effect@4.0.0-beta.68`**; later betas may introduce breaking Schema changes. A
+> `effect@4.0.0-beta.70`**; later betas may introduce breaking Schema changes. A
 > generator-output compile check (`bun run test:emit`) guards the emitted code
 > against the installed Effect, but pin `effect` if you need stability during the
 > beta. The `next` line will be promoted to `latest` when Effect 4 goes stable.
+>
+> **Pin the exact version — do not use `"*"` or `"latest"`.** A `"prisma-effect-kysely": "*"`
+> (or any range) dependency resolves to the **stable** `5.x` line, NOT the
+> pre-release, because npm/pnpm semver excludes prereleases from ranges. In a
+> workspace, depend on `"6.0.0-next.x"` exactly (or add a `pnpm.overrides` /
+> `resolutions` entry). Symptom of getting this wrong: the v3 `5.x` types resolve
+> and consumers see cascading `Schema.Top` / `unknown` type errors.
 >
 > Effect 4 and Effect 3 are not interchangeable: the generated output uses
 > Effect-4-only Schema APIs (`Schema.Date`, `Schema.String.check(Schema.isUUID())`,
@@ -135,6 +142,22 @@ model User {
 
 Supported on all Prisma scalar types.
 
+`@customType(...)` expressions are emitted **verbatim** — they must be valid
+Effect 4 syntax. The generator does not rewrite them, but it **warns** at
+`prisma generate` time when it detects Effect 3 syntax, pointing at the v4 form.
+Effect 4 moved all filters under `.check(Schema.is*)` and made the variadic
+combinators take an array:
+
+| Effect 3 (`@customType`)              | Effect 4                                                               |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| `Schema.Number.pipe(Schema.int())`    | `Schema.Number.pipe(Schema.check(Schema.isInt()))`                     |
+| `Schema.positive()`                   | `Schema.check(Schema.isGreaterThan(0))`                                |
+| `Schema.between(1, 5)`                | `Schema.check(Schema.isBetween({ minimum: 1, maximum: 5 }))`           |
+| `Schema.minLength(3)`                 | `Schema.check(Schema.isMinLength(3))`                                  |
+| `Schema.Union(A, B)`                  | `Schema.Union([A, B])`                                                 |
+| `Schema.Literal('a', 'b')`            | `Schema.Literals(['a', 'b'])` (single `Schema.Literal('x')` unchanged) |
+| `Schema.UUID` / `Schema.DateFromSelf` | `Schema.String.check(Schema.isUUID())` / `Schema.Date`                 |
+
 ## Implicit M2M Join Tables
 
 Prisma columns `A`/`B` map to semantic snake_case fields via `Schema.encodeKeys`:
@@ -148,13 +171,13 @@ export const ProductToProductTag = Schema.Struct({
 
 ## Package Exports
 
-| Entry                            | Contents                                            |
-| -------------------------------- | --------------------------------------------------- |
-| `prisma-effect-kysely`           | Type utilities + runtime helpers (default import)   |
-| `prisma-effect-kysely/generator` | Prisma generator binary entry                       |
-| `prisma-effect-kysely/kysely`    | `getSchemas`, `columnType`, `generated`, type utils |
-| `prisma-effect-kysely/error`     | `NotFoundError`, `QueryError`, `DatabaseError`      |
-| `prisma-effect-kysely/runtime`   | All runtime utilities                               |
+| Entry                            | Contents                                           |
+| -------------------------------- | -------------------------------------------------- |
+| `prisma-effect-kysely`           | Type utilities + runtime helpers (default import)  |
+| `prisma-effect-kysely/generator` | Prisma generator binary entry                      |
+| `prisma-effect-kysely/kysely`    | `columnType`, `generated`, `JsonValue`, type utils |
+| `prisma-effect-kysely/error`     | `NotFoundError`, `QueryError`, `DatabaseError`     |
+| `prisma-effect-kysely/runtime`   | All runtime utilities                              |
 
 ## Development
 
