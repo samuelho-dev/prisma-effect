@@ -91,7 +91,15 @@ export function generateDBInterfaceEntry(model: DMMF.Model) {
 export function generateJoinTableDBInterfaceEntry(joinTable: JoinTableInfo) {
   const { tableName, relationName } = joinTable;
   const schemaName = toPascalCase(relationName);
-  return `  ${tableName}: Schema.Schema.Type<typeof ${schemaName}>;`;
+  // Use the ENCODED type (the `Schema.encodeKeys` mapping), NOT the decoded
+  // `Schema.Schema.Type`. Kysely uses the DB-interface field names as literal SQL
+  // column identifiers, and an implicit M:N join table's physical columns are
+  // `A`/`B` (Prisma's convention) — not the semantic `*_id` names. The decoded
+  // type has the semantic names (for `Schema.decode` output); the encoded type
+  // keeps `A`/`B` with the branded `columnType` values, so queries like
+  // `db.selectFrom('_x').where('_x.A', ...)` emit valid SQL while joins stay
+  // type-safe against the parent table's branded id.
+  return `  ${tableName}: Schema.Codec.Encoded<typeof ${schemaName}>;`;
 }
 
 /**

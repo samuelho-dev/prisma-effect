@@ -169,6 +169,11 @@ export const ProductToProductTag = Schema.Struct({
 }).pipe(Schema.encodeKeys({ product_id: 'A', product_tag_id: 'B' }));
 ```
 
+In the Kysely `DB` interface the join table is typed by its **encoded** shape
+(`Schema.Codec.Encoded<typeof ProductToProductTag>` → `{ A, B }`), so you query
+the physical columns directly: `db.selectFrom('_product_tags').where('_product_tags.A', '=', productId)`.
+`Schema.decode` of a raw row maps `A`/`B` back to `product_id`/`product_tag_id`.
+
 ## Package Exports
 
 | Entry                            | Contents                                           |

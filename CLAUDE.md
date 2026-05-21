@@ -87,6 +87,8 @@ Consumers use `Selectable<typeof User>` / `Insertable<typeof User>` / `Updateabl
 
 Prisma stores `A`/`B` columns; we emit semantic snake_case fields on the struct, then map them to the DB columns with a struct-level `.pipe(Schema.encodeKeys({ <model_a>_id: "A", <model_b>_id: "B" }))`. FK columns are `columnType(Id, Id, Schema.Never)` — insertable (you supply both keys when linking) but read-only on update (composite-PK rows are inserted/deleted, not updated). Join tables get NO branded ID (composite key).
 
+The `DB`-interface entry for a join table uses `Schema.Codec.Encoded<typeof JoinTable>` (the **encoded** `A`/`B` shape), NOT `Schema.Schema.Type` — Kysely uses DB field names as literal SQL identifiers, and the physical columns are `A`/`B`. The semantic `*_id` names exist only on the decode side (`Schema.decode` output). Regular model tables still use `Schema.Schema.Type<typeof Model>`.
+
 ## UUID detection
 
 `isUuidField()` in `src/prisma/type.ts`, priority order:

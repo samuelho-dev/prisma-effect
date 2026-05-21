@@ -888,6 +888,25 @@ describe('Effect Schema - Runtime Behavior', () => {
       expect(fieldNamesOf(Updateable(JoinTable))).toEqual([]);
     });
 
+    it('ENCODES to the physical A/B columns (what the Kysely DB interface must use)', () => {
+      // The DB interface is typed `Schema.Codec.Encoded<typeof JoinTable>`, i.e. the
+      // encoded shape — physical Postgres columns A/B. Encoding a semantic row must
+      // produce { A, B } so Kysely emits valid SQL against the real columns.
+      const encoded = Schema.encodeUnknownSync(JoinTable)({
+        product_id: 'p1',
+        product_tag_id: 't1',
+      });
+      expect(Object.keys(encoded).sort()).toEqual(['A', 'B']);
+      expect(encoded).toEqual({ A: 'p1', B: 't1' });
+    });
+
+    it('DECODES from the physical A/B columns back to semantic names', () => {
+      // The decode direction (Schema.Schema.Type) keeps the semantic *_id names —
+      // this is what consumers get from Schema.decode of a raw DB row.
+      const decoded = Schema.decodeUnknownSync(JoinTable)({ A: 'p1', B: 't1' });
+      expect(decoded).toEqual({ product_id: 'p1', product_tag_id: 't1' });
+    });
+
     it('an encodeKeys struct NESTED as a field is not misdetected as generated', () => {
       // An encodeKeys transform exposes a `.from` own-property, same as a
       // generated() field. Generated detection is gated on the GeneratedId

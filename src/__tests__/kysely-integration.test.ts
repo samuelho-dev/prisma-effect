@@ -191,10 +191,14 @@ describe('Kysely Integration - Functional Tests', () => {
       expect(dbContent).not.toMatch(/Schema\.Schema\.Encoded/);
     });
 
-    it('should support junction table queries with Schema.Schema.Type pattern', () => {
-      // Junction tables (implicit M2M) should be in DB interface
-      // Example: _product_tags, _CategoryToPost
-      expect(typesContent).toMatch(/_product_tags:\s*Schema\.Schema\.Type<typeof \w+>/);
+    it('should expose junction tables by their ENCODED (physical A/B) shape', () => {
+      // Implicit M2M join tables have physical Postgres columns `A`/`B`. Kysely
+      // uses DB-interface field names as literal SQL identifiers, so the join
+      // table must be typed by its ENCODED shape (Schema.Codec.Encoded → { A, B }),
+      // NOT the decoded Schema.Schema.Type (which has the semantic *_id names used
+      // only for decode output). Emitting the decoded names would make
+      // `db.selectFrom('_x').where('_x.A', ...)` impossible / emit invalid SQL.
+      expect(typesContent).toMatch(/_product_tags:\s*Schema\.Codec\.Encoded<typeof \w+>/);
     });
   });
 

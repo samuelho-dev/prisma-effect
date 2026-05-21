@@ -155,4 +155,64 @@ describe('pglite roundtrip', () => {
     expect(row.title).toBe('n');
     expect(row.body).toBeNull();
   });
+
+  it('implicit M:N join table is queryable by its physical A/B columns', async () => {
+    // Regression: the Kysely DB-interface type for an implicit M:N join table must
+    // use the ENCODED shape (physical Postgres columns A/B), because Kysely emits
+    // DB-interface field names as literal SQL identifiers. The physical table only
+    // has columns A/B; the semantic *_id names live solely in the Schema's
+    // encodeKeys (decode) mapping. This test runs the exact query that previously
+    // failed — `where('_product_tags.A', ...)` — against a real A/B table.
+    const JoinDDL = `
+      CREATE TABLE "_product_tags" (
+        "A" uuid NOT NULL,
+        "B" uuid NOT NULL,
+        PRIMARY KEY ("A", "B")
+      );
+    `;
+    const ProductId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('ProductId'));
+    const ProductTagId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('ProductTagId'));
+    const ProductTags = Schema.Struct({
+      product_id: columnType(ProductId, ProductId, Schema.Never),
+      product_tag_id: columnType(ProductTagId, ProductTagId, Schema.Never),
+    }).pipe(Schema.encodeKeys({ product_id: 'A', product_tag_id: 'B' }));
+
+    // The generator emits this exact DB-interface entry for join tables.
+    interface JoinDB {
+      _product_tags: Schema.Codec.Encoded<typeof ProductTags>;
+    }
+
+    // Branded values, as a real consumer would supply them — the encoded A/B
+    // columns are branded (ProductId/ProductTagId), so the join stays type-safe.
+    const pid = Schema.decodeUnknownSync(ProductId)('11111111-1111-4111-8111-111111111111');
+    const tid = Schema.decodeUnknownSync(ProductTagId)('22222222-2222-4222-8222-222222222222');
+
+    const program = Effect.gen(function* () {
+      const db = (yield* KyselyDb) as Kysely<JoinDB>;
+
+      yield* Effect.tryPromise({
+        try: () => db.insertInto('_product_tags').values({ A: pid, B: tid }).execute(),
+        catch: (cause) => new Error(`insert failed: ${String(cause)}`),
+      });
+
+      // The previously-broken query: reference the PHYSICAL column A.
+      const found = yield* Effect.tryPromise({
+        try: () =>
+          db
+            .selectFrom('_product_tags')
+            .selectAll()
+            .where('_product_tags.A', '=', pid)
+            .executeTakeFirst(),
+        catch: (cause) => new Error(`select failed: ${String(cause)}`),
+      });
+
+      // Decode the raw {A,B} row back to semantic names via the schema.
+      return found ? Schema.decodeUnknownSync(ProductTags)(found) : undefined;
+    });
+
+    const Live = makePgliteLayer<JoinDB>(JoinDDL);
+    const decoded = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(Live))));
+
+    expect(decoded).toEqual({ product_id: pid, product_tag_id: tid });
+  });
 });
