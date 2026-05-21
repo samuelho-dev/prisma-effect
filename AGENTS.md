@@ -16,6 +16,11 @@ material** (via `git subtree`, not a submodule — no init needed).
 - `repos/` is excluded from TypeScript compilation, ESLint, Prettier, and the
   npm package (`files` allowlist). Do not add it to any `include`/`files` list.
 
+For Schema work, start with the distilled cheat-sheet **`agent-patterns/effect-schema.md`**
+(v4 constructors, filters, branding/`encodeKeys`, the v3→v4 traps, and this
+package's `columnType`/`generated`/`Selectable` helpers), then drill into
+`repos/effect` for exact signatures.
+
 ### `repos/effect/` — Effect v4 source (vendored from `Effect-TS/effect-smol`, branch `main`)
 
 `effect@4.0.0-beta.x` is built from the `effect-smol` monorepo. When writing or

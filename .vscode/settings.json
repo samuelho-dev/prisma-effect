@@ -2,6 +2,9 @@
   "//": "repos/ is vendored read-only reference source (git subtree). Keep it out of editor auto-imports, search, and file watching so it never leaks into project code or slows the editor.",
   "typescript.preferences.autoImportFileExcludePatterns": ["repos/**"],
   "javascript.preferences.autoImportFileExcludePatterns": ["repos/**"],
+  "files.exclude": {
+    "repos/**": true
+  },
   "search.exclude": {
     "repos/**": true
   },
