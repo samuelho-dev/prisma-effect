@@ -7,6 +7,7 @@
   "changesets": [
     "effect-v4-beta",
     "insertable-null-and-jointable-fk",
+    "jointable-db-interface-physical-columns",
     "legacy-customtype-detector"
   ]
 }
