@@ -2,7 +2,7 @@ import { Effect, Schema } from 'effect';
 import type { Kysely } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import { NotFoundError } from '../../error/index.js';
-import { columnType, generated } from '../../kysely/helpers.js';
+import { columnType, generated, Insertable } from '../../kysely/helpers.js';
 import { KyselyDb, makePgliteLayer } from '../helpers/pglite-db.js';
 
 /**
@@ -114,5 +114,45 @@ describe('pglite roundtrip', () => {
     );
 
     await expect(Effect.runPromise(recovered)).resolves.toBe('missing in User');
+  });
+
+  it('Insertable accepts an explicit NULL for a nullable column (roundtrips to DB)', async () => {
+    const NoteDDL = `
+      CREATE TABLE "Note" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "title" text NOT NULL,
+        "body" text
+      );
+    `;
+    const NoteId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('NoteId'));
+    const Note = Schema.Struct({
+      id: columnType(NoteId, Schema.Never, Schema.Never),
+      title: Schema.String,
+      body: Schema.NullOr(Schema.String), // Prisma optional column
+    });
+    interface NoteDB {
+      Note: Schema.Schema.Type<typeof Note>;
+    }
+
+    const program = Effect.gen(function* () {
+      const db = (yield* KyselyDb) as Kysely<NoteDB>;
+
+      // Explicit null must pass Insertable() decode and reach the DB as NULL.
+      const insertValues = Schema.decodeUnknownSync(Insertable(Note))({ title: 'n', body: null });
+
+      const inserted = yield* Effect.tryPromise({
+        try: () =>
+          db.insertInto('Note').values(insertValues).returningAll().executeTakeFirstOrThrow(),
+        catch: (cause) => new Error(`insert failed: ${String(cause)}`),
+      });
+
+      return Schema.decodeUnknownSync(Note)(inserted);
+    });
+
+    const Live = makePgliteLayer<NoteDB>(NoteDDL);
+    const row = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(Live))));
+
+    expect(row.title).toBe('n');
+    expect(row.body).toBeNull();
   });
 });

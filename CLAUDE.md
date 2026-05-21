@@ -77,7 +77,7 @@ Consumers use `Selectable<typeof User>` / `Insertable<typeof User>` / `Updateabl
 
 - `@default` or `@updatedAt` → `generated()` (omitted from insert, optional in update)
 - `@id` with `@default` → `columnType(type, Schema.Never, Schema.Never)` (read-only)
-- Optional → `Schema.NullOr(type)`
+- Optional → `Schema.NullOr(type)` (optional on insert AND keeps `null` — explicit `null` is a valid insert value, matching Kysely)
 - Foreign keys → branded ID of target model
 - Relations excluded — only scalars + enums in schemas
 - Models starting with `_` filtered out
@@ -85,7 +85,7 @@ Consumers use `Selectable<typeof User>` / `Insertable<typeof User>` / `Updateabl
 
 ## Implicit M2M join tables
 
-Prisma stores `A`/`B` columns; we emit semantic snake_case fields on the struct, then map them to the DB columns with a struct-level `.pipe(Schema.encodeKeys({ <model_a>_id: "A", <model_b>_id: "B" }))`. Join tables get NO branded ID (composite key).
+Prisma stores `A`/`B` columns; we emit semantic snake_case fields on the struct, then map them to the DB columns with a struct-level `.pipe(Schema.encodeKeys({ <model_a>_id: "A", <model_b>_id: "B" }))`. FK columns are `columnType(Id, Id, Schema.Never)` — insertable (you supply both keys when linking) but read-only on update (composite-PK rows are inserted/deleted, not updated). Join tables get NO branded ID (composite key).
 
 ## UUID detection
 

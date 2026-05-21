@@ -240,8 +240,8 @@ describe('Join Table Generation - Functional Tests', () => {
       const generated = generateJoinTableSchema(joinTables[0], dmmf);
 
       // Should reference branded ID schemas, not raw Schema.String.check(Schema.isUUID())
-      expect(generated).toContain('columnType(CategoryId, Schema.Never, Schema.Never)');
-      expect(generated).toContain('columnType(PostId, Schema.Never, Schema.Never)');
+      expect(generated).toContain('columnType(CategoryId, CategoryId, Schema.Never)');
+      expect(generated).toContain('columnType(PostId, PostId, Schema.Never)');
       expect(generated).not.toContain('Schema.String.check(Schema.isUUID())');
     });
 
@@ -267,8 +267,8 @@ describe('Join Table Generation - Functional Tests', () => {
       const generated = generateJoinTableSchema(joinTables[0], dmmf);
 
       // Should reference branded ID schemas regardless of underlying type
-      expect(generated).toContain('columnType(CategoryId, Schema.Never, Schema.Never)');
-      expect(generated).toContain('columnType(PostId, Schema.Never, Schema.Never)');
+      expect(generated).toContain('columnType(CategoryId, CategoryId, Schema.Never)');
+      expect(generated).toContain('columnType(PostId, PostId, Schema.Never)');
       expect(generated).not.toContain('Schema.Number');
     });
 
@@ -295,9 +295,9 @@ describe('Join Table Generation - Functional Tests', () => {
 
       // Post comes before Tag alphabetically, so A = Post, B = Tag
       expect(generated).toContain('post_id:');
-      expect(generated).toContain('columnType(PostId, Schema.Never, Schema.Never)');
+      expect(generated).toContain('columnType(PostId, PostId, Schema.Never)');
       expect(generated).toContain('tag_id:');
-      expect(generated).toContain('columnType(TagId, Schema.Never, Schema.Never)');
+      expect(generated).toContain('columnType(TagId, TagId, Schema.Never)');
       // Should not contain raw schema types
       expect(generated).not.toContain('Schema.String.check(Schema.isUUID())');
       expect(generated).not.toContain('Schema.Number');
@@ -325,13 +325,13 @@ describe('Join Table Generation - Functional Tests', () => {
       const generated = generateJoinTableSchema(joinTables[0], dmmf);
 
       // Branded IDs should follow PascalCase model name + "Id"
-      expect(generated).toContain('columnType(UserPermissionId, Schema.Never, Schema.Never)');
-      expect(generated).toContain('columnType(UserProfileId, Schema.Never, Schema.Never)');
+      expect(generated).toContain('columnType(UserPermissionId, UserPermissionId, Schema.Never)');
+      expect(generated).toContain('columnType(UserProfileId, UserProfileId, Schema.Never)');
     });
   });
 
-  describe('Read-Only Foreign Keys', () => {
-    it('should use columnType for read-only behavior on both columns', async () => {
+  describe('Foreign Key insert/update behavior', () => {
+    it('should make both FK columns insertable but read-only on update', async () => {
       const schema = `
         datasource db {
           provider = "postgresql"
@@ -352,12 +352,16 @@ describe('Join Table Generation - Functional Tests', () => {
       const joinTables = detectImplicitManyToMany(dmmf.datamodel.models);
       const generated = generateJoinTableSchema(joinTables[0], dmmf);
 
-      // Both columns should use columnType with Never for insert/update
+      // Both columns use columnType, once for A and once for B.
       const columnTypeMatches = generated.match(/columnType/g);
-      expect(columnTypeMatches).toHaveLength(2); // Once for A, once for B
+      expect(columnTypeMatches).toHaveLength(2);
 
-      // Should use Never for insert and update (read-only)
-      expect(generated).toContain('Schema.Never, Schema.Never');
+      // columnType(Id, Id, Never): FK is provided on INSERT (you supply both keys
+      // when linking a row) and read-only on UPDATE (composite-PK rows are
+      // inserted/deleted, never updated). Never appears only in the update slot.
+      expect(generated).toContain('columnType(RoleId, RoleId, Schema.Never)');
+      expect(generated).toContain('columnType(UserId, UserId, Schema.Never)');
+      expect(generated).not.toContain('Schema.Never, Schema.Never');
     });
   });
 

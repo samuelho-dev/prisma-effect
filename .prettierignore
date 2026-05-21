@@ -15,3 +15,7 @@ src/__tests__/generated/
 
 # Git
 .git/
+
+# Changesets-managed state (pre.json is rewritten by the changesets CLI;
+# reformatting it can interfere with pre-release bookkeeping)
+.changeset/pre.json

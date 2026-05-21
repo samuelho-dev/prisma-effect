@@ -359,9 +359,22 @@ const getColumnTypeSchemas = (field: FieldEntry): ColumnTypeSchemas | undefined 
   return readAnnotation<ColumnTypeSchemas>(field, ColumnTypeId);
 };
 
-/** Resolve the base schema of a Generated field: own-property first, annotation fallback. */
-const getGeneratedFrom = (field: FieldEntry): Schema.Top | undefined =>
-  field.from ?? readAnnotation<GeneratedAnnotation>(field, GeneratedId)?.from;
+/**
+ * Resolve the base schema of a Generated field, or undefined if not generated.
+ *
+ * Detection is gated on the `GeneratedId` annotation — the authoritative marker
+ * that `generated()` always sets. A bare `.from` own-property is NOT sufficient:
+ * `Schema.encodeKeys(...)` transforms (used for join tables) also expose a `.from`
+ * property, so trusting `.from` alone would misclassify a nested encodeKeys field
+ * as generated. When the marker is present, the `.from` own-property is preferred
+ * (it survives the field→Struct round-trip) with the annotation's `from` as the
+ * fallback for a consumer-`.annotate()`d schema where own-props were dropped.
+ */
+const getGeneratedFrom = (field: FieldEntry): Schema.Top | undefined => {
+  const annotation = readAnnotation<GeneratedAnnotation>(field, GeneratedId);
+  if (annotation === undefined) return undefined;
+  return field.from ?? annotation.from;
+};
 
 const isGeneratedField = (field: FieldEntry): boolean => getGeneratedFrom(field) !== undefined;
 
@@ -378,20 +391,6 @@ const isNullableUnion = (
 ): schema is Schema.Union<readonly [Schema.Top, Schema.Top]> => {
   const members = (schema as { members?: ReadonlyArray<Schema.Top> }).members;
   return Array.isArray(members) && members.some((m) => AST.isNull(m.ast));
-};
-
-/**
- * Strip null from a `NullOr` schema for Insertable fields.
- * For INSERT, omitting a field = NULL in the DB, so explicit null is unnecessary.
- * Returns the non-null member; otherwise returns the schema unchanged.
- */
-const stripNull = (schema: Schema.Top): Schema.Top => {
-  const members = (schema as { members?: ReadonlyArray<Schema.Top> }).members;
-  if (!Array.isArray(members)) return schema;
-  const nonNull = members.filter((m) => !AST.isNull(m.ast));
-  if (nonNull.length === 1) return nonNull[0];
-  if (nonNull.length > 1) return Schema.Union(nonNull);
-  return schema;
 };
 
 /** Apply `Schema.mutable` only to array fields (it throws on scalars in v4). */
@@ -634,8 +633,11 @@ export function Insertable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
     }
 
     if (isNullableUnion(field)) {
-      // Union(T, null) -> optional, with null stripped from the type (omitting = NULL).
-      insertFields[key] = Schema.optional(stripNull(field));
+      // Union(T, null) -> optional on insert. Null is RETAINED so a caller can
+      // explicitly set the column to NULL (`{ x: null }`), matching SQL and
+      // Kysely's Insertable, which both permit omit / value / explicit null for
+      // a nullable column. (Omitting the key also leaves the column NULL.)
+      insertFields[key] = Schema.optional(mutableIfArray(field));
       continue;
     }
 

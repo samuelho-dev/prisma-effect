@@ -253,6 +253,17 @@ describe('Effect Schema - Runtime Behavior', () => {
 
       const result2 = Schema.decodeUnknownSync(Insertable(ProductSchema))(fullInsert);
       expect(result2).toEqual(fullInsert);
+
+      // Explicit null is also accepted (set the column to NULL on insert),
+      // matching SQL + Kysely's Insertable. Null is NOT stripped from the type.
+      const insertWithNulls = {
+        name: 'Widget',
+        description: null,
+        price: null,
+      };
+
+      const result3 = Schema.decodeUnknownSync(Insertable(ProductSchema))(insertWithNulls);
+      expect(result3).toEqual(insertWithNulls);
     });
 
     it('should handle models with only generated fields', () => {
@@ -844,16 +855,16 @@ describe('Effect Schema - Runtime Behavior', () => {
   });
 
   describe('Join tables (encodeKeys-wrapped structs)', () => {
-    // Mirrors the generator's implicit-M:N join-table emit: a struct of read-only
-    // columnType FKs whose semantic field names are mapped to the DB A/B columns
-    // via Schema.encodeKeys. The variant functions must operate on the DECODED
+    // Mirrors the generator's implicit-M:N join-table emit: columnType(Id, Id, Never)
+    // FKs whose semantic field names are mapped to the DB A/B columns via
+    // Schema.encodeKeys. The variant functions must operate on the DECODED
     // (semantic) field names — reading the encoded A/B keys would be a regression.
     const ProductId = Schema.String.pipe(Schema.brand('ProductId'));
     const ProductTagId = Schema.String.pipe(Schema.brand('ProductTagId'));
 
     const JoinTable = Schema.Struct({
-      product_id: columnType(ProductId, Schema.Never, Schema.Never),
-      product_tag_id: columnType(ProductTagId, Schema.Never, Schema.Never),
+      product_id: columnType(ProductId, ProductId, Schema.Never),
+      product_tag_id: columnType(ProductTagId, ProductTagId, Schema.Never),
     }).pipe(Schema.encodeKeys({ product_id: 'A', product_tag_id: 'B' }));
 
     const fieldNamesOf = (schema: Schema.Top): string[] => {
@@ -868,13 +879,31 @@ describe('Effect Schema - Runtime Behavior', () => {
       expect(names).not.toContain('B');
     });
 
-    it('Insertable omits the read-only (Never) FK columns', () => {
-      // Both FKs are columnType(Id, Never, Never) -> excluded from insert.
-      expect(fieldNamesOf(Insertable(JoinTable))).toEqual([]);
+    it('Insertable keeps both FK columns (you supply the keys when linking)', () => {
+      const names = fieldNamesOf(Insertable(JoinTable));
+      expect(names).toEqual(['product_id', 'product_tag_id']);
     });
 
-    it('Updateable omits the read-only (Never) FK columns', () => {
+    it('Updateable omits both FK columns (Never update — read-only composite PK)', () => {
       expect(fieldNamesOf(Updateable(JoinTable))).toEqual([]);
+    });
+
+    it('an encodeKeys struct NESTED as a field is not misdetected as generated', () => {
+      // An encodeKeys transform exposes a `.from` own-property, same as a
+      // generated() field. Generated detection is gated on the GeneratedId
+      // annotation, so a nested encodeKeys field must stay required on insert.
+      const Outer = Schema.Struct({
+        link: JoinTable, // encodeKeys-wrapped struct used as a field value
+        note: Schema.String,
+      });
+
+      const insertNames = fieldNamesOf(Insertable(Outer));
+      expect(insertNames).toContain('link');
+      expect(insertNames).toContain('note');
+
+      // `link` must be required (not made optional as a generated field would be):
+      // omitting it fails to decode.
+      expect(() => Schema.decodeUnknownSync(Insertable(Outer))({ note: 'x' })).toThrow();
     });
   });
 

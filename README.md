@@ -141,8 +141,8 @@ Prisma columns `A`/`B` map to semantic snake_case fields via `Schema.encodeKeys`
 
 ```typescript
 export const ProductToProductTag = Schema.Struct({
-  product_id: columnType(ProductId, Schema.Never, Schema.Never),
-  product_tag_id: columnType(ProductTagId, Schema.Never, Schema.Never),
+  product_id: columnType(ProductId, ProductId, Schema.Never),
+  product_tag_id: columnType(ProductTagId, ProductTagId, Schema.Never),
 }).pipe(Schema.encodeKeys({ product_id: 'A', product_tag_id: 'B' }));
 ```
 

@@ -8,13 +8,15 @@ import { toPascalCase, toSnakeCase } from '../utils/naming.js';
  * Structure:
  * - Direct export with semantic snake_case field names
  * - Maps TypeScript names to database A/B columns using Schema.encodeKeys
- * - Uses columnType for read-only foreign keys (can't insert/update join table rows directly)
+ * - Uses columnType(Id, Id, Never) for the FK columns: provided on INSERT (you
+ *   supply both foreign keys when linking a row) but read-only on UPDATE — a
+ *   composite-PK join row is inserted or deleted, never updated in place
  * - No type exports - consumers use type utilities: Selectable<JoinTable>
  *
  * Example:
  * - Database columns: A, B (Prisma requirement for implicit many-to-many)
  * - TypeScript fields: product_id, product_tag_id (semantic names)
- * - Types: columnType(ProductId, Schema.Never, Schema.Never) (read-only, branded)
+ * - Types: columnType(ProductId, ProductId, Schema.Never) (insertable, read-only on update, branded)
  */
 export function generateJoinTableSchema(joinTable: JoinTableInfo, _dmmf: DMMF.Document) {
   const { tableName, relationName, modelA, modelB } = joinTable;
@@ -28,12 +30,13 @@ export function generateJoinTableSchema(joinTable: JoinTableInfo, _dmmf: DMMF.Do
   const modelASchemaType = `${toPascalCase(modelA)}Id`;
   const modelBSchemaType = `${toPascalCase(modelB)}Id`;
 
-  // Use columnType for read-only FK fields (can't insert/update join table rows directly).
+  // columnType(Id, Id, Never): the FK is supplied on INSERT and read-only on
+  // UPDATE (composite-PK join rows are inserted/deleted, not updated).
   // The struct uses semantic field names; Schema.encodeKeys renames them to the
   // database A/B columns on the encoded side (Effect 4 replacement for the old
   // Schema.propertySignature(...).pipe(Schema.fromKey(...)) pattern).
-  const columnAField = `  ${columnAFieldName}: columnType(${modelASchemaType}, Schema.Never, Schema.Never)`;
-  const columnBField = `  ${columnBFieldName}: columnType(${modelBSchemaType}, Schema.Never, Schema.Never)`;
+  const columnAField = `  ${columnAFieldName}: columnType(${modelASchemaType}, ${modelASchemaType}, Schema.Never)`;
+  const columnBField = `  ${columnBFieldName}: columnType(${modelBSchemaType}, ${modelBSchemaType}, Schema.Never)`;
 
   // Use PascalCase for exported name (consistent with regular models)
   const pascalName = toPascalCase(relationName);
