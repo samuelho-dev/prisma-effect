@@ -5,6 +5,7 @@
     "prisma-effect-kysely": "5.5.0"
   },
   "changesets": [
-    "effect-v4-beta"
+    "effect-v4-beta",
+    "insertable-null-and-jointable-fk"
   ]
 }
