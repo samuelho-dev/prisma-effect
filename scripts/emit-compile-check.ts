@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import prismaInternals from '@prisma/internals';
 import { EffectGenerator } from '../src/effect/generator.js';
 import { generateDBInterface } from '../src/kysely/type.js';
+import { PrismaGenerator } from '../src/prisma/generator.js';
 import { detectImplicitManyToMany } from '../src/prisma/relation.js';
 
 const { getDMMF } = prismaInternals;
@@ -27,6 +28,11 @@ async function main() {
   const dmmf = await getDMMF({ datamodel });
 
   const gen = new EffectGenerator(dmmf);
+  // Use the same field-selection the orchestrator uses in production, so the
+  // emitted output (and this compile check) matches what `prisma generate`
+  // actually produces — `getModelFields` filters out relation (`kind: 'object'`)
+  // fields, which are not DB columns and must not appear in the schema.
+  const prismaGen = new PrismaGenerator(dmmf);
   const models = dmmf.datamodel.models;
   const enums = dmmf.datamodel.enums;
   const joinTables = detectImplicitManyToMany(dmmf.datamodel.models);
@@ -39,9 +45,10 @@ async function main() {
   // types.ts: header + branded ids + model schemas + join tables + DB interface
   const parts: string[] = [gen.generateTypesHeader(hasEnums)];
   for (const model of models) {
-    const branded = gen.generateBrandedIdSchema(model, model.fields);
+    const fields = prismaGen.getModelFields(model);
+    const branded = gen.generateBrandedIdSchema(model, fields);
     if (branded) parts.push(branded);
-    parts.push(gen.generateModelSchema(model, model.fields));
+    parts.push(gen.generateModelSchema(model, fields));
   }
   if (joinTables.length > 0) parts.push(gen.generateJoinTableSchemas(joinTables));
   parts.push(generateDBInterface(models, joinTables));
