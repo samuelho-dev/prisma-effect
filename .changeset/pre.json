@@ -6,6 +6,7 @@
   },
   "changesets": [
     "effect-v4-beta",
-    "insertable-null-and-jointable-fk"
+    "insertable-null-and-jointable-fk",
+    "legacy-customtype-detector"
   ]
 }
