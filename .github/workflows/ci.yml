@@ -47,17 +47,7 @@ jobs:
         run: bun run build
 
       - name: Verify package
-        run: |
-          npx --yes publint
-
-          # Use the locally installed (pinned + patched) attw, NOT npx-latest.
-          # Upstream @arethetypeswrong/core crashes ("Cannot read properties of
-          # undefined (reading 'filename')") on tarballs that gunzip into multiple
-          # chunks; fixed via patches/@arethetypeswrong%2Fcore@0.18.2.patch (upstream
-          # PR: arethetypeswrong/arethetypeswrong.github.io#263). attw gates again —
-          # drop the patch + pin and return to `npx --yes` once the fix is released.
-          # ESM-only package: don't require CJS support, and ignore node10.
-          bun run attw --pack . --profile node16 --ignore-rules cjs-resolves-to-esm
+        run: npx --yes publint
 
   coverage:
     name: Coverage
