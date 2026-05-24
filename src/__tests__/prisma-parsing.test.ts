@@ -26,7 +26,7 @@ import { mapFieldToEffectType } from '../effect/type';
  */
 
 describe('Prisma Parsing & Domain Logic', () => {
-  describe('UUID Detection (3-Tier Strategy)', () => {
+  describe('UUID Detection (authoritative @db.Uuid only)', () => {
     it('should detect UUID via @db.Uuid native type (priority 1)', () => {
       const field = createMockField({
         name: 'id',
@@ -45,16 +45,20 @@ describe('Prisma Parsing & Domain Logic', () => {
       expect(PrismaType.isUuidField(field)).toBe(true);
     });
 
-    it('should detect UUID via field name patterns (priority 3)', () => {
-      const uuidFields = [
+    it('should NOT infer UUID from field-name patterns', () => {
+      // Names ending in `_id`/`_uuid` (and bare `id`/`uuid`) are NOT proof of a
+      // UUID column — external identifiers like Stripe IDs (`acct_…`, `cus_…`)
+      // are text. Only an explicit @db.Uuid marks a UUID; name guessing is gone.
+      const nameOnlyFields = [
         createMockField({ name: 'id', isId: true }),
         createMockField({ name: 'user_id' }),
+        createMockField({ name: 'stripe_customer_id' }),
         createMockField({ name: 'external_uuid' }),
         createMockField({ name: 'uuid' }),
       ];
 
-      for (const field of uuidFields) {
-        expect(PrismaType.isUuidField(field)).toBe(true);
+      for (const field of nameOnlyFields) {
+        expect(PrismaType.isUuidField(field)).toBe(false);
       }
     });
 

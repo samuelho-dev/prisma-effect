@@ -1,33 +1,33 @@
 import type { DMMF } from '@prisma/generator-helper';
 
 /**
- * Check if a field is a UUID using native DMMF type information
- * 3-tier detection: native type � documentation � field name patterns
+ * Check if a field is a UUID, based solely on the authoritative DMMF type info.
+ *
+ * UUID is a *column type*, not a naming convention. Prisma always records a
+ * `uuid` column as the `@db.Uuid` native type (a bare `String` maps to `text`),
+ * so the native-type/`@db.Uuid` checks capture every genuine UUID column.
+ *
+ * A previous third tier inferred UUID from field-name patterns (`id`, `*_id`,
+ * `*_uuid`, `uuid`). That was a false-positive generator: any external-system
+ * identifier stored as text — Stripe IDs (`acct_…`, `cus_…`, `txn_…`), slugs,
+ * provider/session references — ends in `_id` without being a UUID, yet got
+ * `Schema.isUUID()` applied and then died at decode time on real data. The DMMF
+ * already knows the real type, so the name guess only ever contradicted ground
+ * truth. It has been removed; use `/// @db.Uuid` (or a real `@db.Uuid` column)
+ * to mark UUID columns explicitly.
  */
 export function isUuidField(field: DMMF.Field) {
-  // 1. Check native type (most reliable)
+  // Native type — the authoritative signal for a `uuid` column.
   if (field.nativeType?.[0] === 'Uuid') {
     return true;
   }
 
-  // 2. Check documentation for @db.Uuid
+  // `@db.Uuid` recorded in the field's documentation/attributes.
   if (field.documentation?.includes('@db.Uuid')) {
     return true;
   }
 
-  // 3. Fallback: Field name patterns (only for String type)
-  if (field.type !== 'String') {
-    return false;
-  }
-
-  const uuidFieldPatterns = [
-    /^id$/, // Primary ID fields
-    /_id$/, // Foreign key ID fields
-    /^.*_uuid$/, // uuid suffix
-    /^uuid$/, // Direct uuid fields
-  ] as const;
-
-  return uuidFieldPatterns.some((pattern) => pattern.test(field.name));
+  return false;
 }
 
 /**
