@@ -90,11 +90,18 @@ Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`. `DateFromInput` a
 
 ## UUID Detection
 
-Priority order:
+A column is treated as a UUID only when Prisma's type information says so:
 
 1. Native type: `@db.Uuid`
-2. Documentation: `@db.Uuid` in field comment
-3. Field name pattern: `id`, `*_id`, `*_uuid`, `uuid`
+2. Documentation: `@db.Uuid` in the field comment (`/// @db.Uuid`)
+
+UUID is a column type, not a naming convention — a bare `String` maps to `text`,
+so `@db.Uuid` always captures genuine UUID columns. Field-name inference
+(`*_id`, `*_uuid`, …) is intentionally NOT used: external identifiers such as
+Stripe IDs (`acct_…`, `cus_…`) are text but end in `_id`, and inferring UUID
+from the name produced false `Schema.isUUID()` checks that crashed at decode
+time. Mark a non-`@db.Uuid` column as a UUID explicitly via `/// @db.Uuid`, or
+override its schema entirely with `@customType(...)`.
 
 ## Custom Type Overrides
 
