@@ -91,11 +91,15 @@ The `DB`-interface entry for a join table uses `Schema.Codec.Encoded<typeof Join
 
 ## UUID detection
 
-`isUuidField()` in `src/prisma/type.ts`, priority order:
+`isUuidField()` in `src/prisma/type.ts` — authoritative DMMF type only:
 
 1. `field.nativeType[0] === 'Uuid'` (from `@db.Uuid`)
 2. `field.documentation` includes `@db.Uuid`
-3. Name regex: `id`, `*_id`, `*_uuid`, `uuid`
+
+No name-regex tier. UUID is a column type, not a naming convention; inferring it
+from `*_id`/`*_uuid` names false-positived on text identifiers (e.g. Stripe
+`acct_…`/`cus_…`) and crashed at decode. Use `/// @db.Uuid` or `@customType(...)`
+to mark non-native UUID columns.
 
 ## Type mappings
 
