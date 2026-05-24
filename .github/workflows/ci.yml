@@ -48,18 +48,16 @@ jobs:
 
       - name: Verify package
         run: |
-          # publint is the gating export validator.
           npx --yes publint
 
-          # are-the-types-wrong is advisory: current releases crash internally
-          # ("Cannot read properties of undefined (reading 'filename')") on this
-          # package's ESM-only multi-subpath exports, regardless of version or a
-          # clean rebuild. publint already confirms the exports are valid, so an
-          # attw crash must not fail the build. Re-enable gating once the upstream
-          # bug is fixed (https://github.com/arethetypeswrong/arethetypeswrong.github.io).
+          # Use the locally installed (pinned + patched) attw, NOT npx-latest.
+          # Upstream @arethetypeswrong/core crashes ("Cannot read properties of
+          # undefined (reading 'filename')") on tarballs that gunzip into multiple
+          # chunks; fixed via patches/@arethetypeswrong%2Fcore@0.18.2.patch (upstream
+          # PR: arethetypeswrong/arethetypeswrong.github.io#263). attw gates again —
+          # drop the patch + pin and return to `npx --yes` once the fix is released.
           # ESM-only package: don't require CJS support, and ignore node10.
-          npx --yes @arethetypeswrong/cli --pack . --profile node16 --ignore-rules cjs-resolves-to-esm || \
-            echo "::warning::attw check skipped (known upstream crash); publint passed"
+          bun run attw --pack . --profile node16 --ignore-rules cjs-resolves-to-esm
 
   coverage:
     name: Coverage
