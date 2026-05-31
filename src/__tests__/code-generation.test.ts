@@ -161,16 +161,19 @@ describe('Code Generation - E2E and Validation', () => {
       expect(enumsContent).toMatch(/import \{ Schema \} from ["']effect["']/);
     });
 
-    it('should generate schemas directly without underscore prefix', () => {
-      // Schemas are exported directly (e.g., User, Post)
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
-      expect(typesContent).toMatch(/export const Post = Schema\.Struct/);
+    it('should emit the wrapper-laden table struct under a Table suffix', () => {
+      // The Kysely-facing table schema (columnType/generated wrappers intact)
+      // carries the `Table` suffix — Kysely's canonical convention. It drives
+      // the DB interface; consumers never use it as a query result type.
+      expect(typesContent).toMatch(/export const UserTable = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const PostTable = Schema\.Struct/);
     });
 
-    it('should export schemas with type aliases', () => {
-      // Pattern: export const User = Schema.Struct({...}); export type User = typeof User;
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
-      expect(typesContent).toMatch(/export type User = typeof User/);
+    it('should emit the bare-named SELECT row as Selectable(Table) + merged type', () => {
+      // Bare `User` is the SELECT row (wrappers stripped) — what contracts,
+      // RPC outputs, and decode boundaries bind to. Value+type merged.
+      expect(typesContent).toMatch(/export const User = Selectable\(UserTable\)/);
+      expect(typesContent).toMatch(/export type User = typeof User\.Type/);
     });
 
     it('should generate branded ID schemas for models with @id field', () => {
@@ -187,15 +190,18 @@ describe('Code Generation - E2E and Validation', () => {
       expect(typesContent).not.toMatch(/export type UserSelectEncoded\s*=/);
     });
 
-    it('should generate DB interface with Schema.Schema.Type pattern', () => {
+    it('should generate DB interface from the Table struct (wrappers preserved for Kysely)', () => {
       expect(typesContent).toContain('export interface DB');
-      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+>;/);
+      // DB interface MUST reference the wrapper-laden *Table struct so Kysely's
+      // Selectable/Insertable/Updateable variance works on .insertInto/.updateTable.
+      expect(typesContent).toMatch(/:\s*Schema\.Schema\.Type<typeof \w+Table>;/);
 
-      // Should use Schema.Schema.Type<typeof Model> to preserve phantom properties
       const dbMatch = typesContent.match(/export interface DB\s*{([^}]+)}/s);
       expect(dbMatch).toBeTruthy();
       const dbContent = dbMatch?.[1];
       expect(dbContent).not.toMatch(/Schema\.Schema\.Encoded/);
+      // The bare row (Selectable) must NOT appear in the DB interface.
+      expect(dbContent).not.toMatch(/:\s*Schema\.Schema\.Type<typeof User>;/);
     });
 
     it('should re-export from index', () => {
@@ -281,7 +287,7 @@ describe('Code Generation - E2E and Validation', () => {
       // CompositeIdModel has @@map("composite_id_table")
       // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
       expect(typesContent).toMatch(
-        /composite_id_table:\s*Schema\.Schema\.Type<typeof CompositeIdModel>/
+        /composite_id_table:\s*Schema\.Schema\.Type<typeof CompositeIdModelTable>/
       );
     });
   });
@@ -427,14 +433,15 @@ describe('Code Generation - E2E and Validation', () => {
     });
 
     it('should export all necessary schemas for each model', () => {
-      // Schema is exported directly
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
+      // Wrapper-laden table struct (Kysely) + bare Selectable row (contracts)
+      expect(typesContent).toMatch(/export const UserTable = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const User = Selectable\(UserTable\)/);
       // IdSchema is exported for branded types
       expect(typesContent).toMatch(
         /export const UserId = Schema\.String\.check\(Schema\.isUUID\(\)\)\.pipe\(Schema\.brand/
       );
-      // Type alias for type usage
-      expect(typesContent).toMatch(/export type User = typeof User/);
+      // Value+type merged row alias
+      expect(typesContent).toMatch(/export type User = typeof User\.Type/);
     });
 
     it('should include all models in DB interface', () => {

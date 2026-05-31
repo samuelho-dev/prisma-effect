@@ -75,15 +75,16 @@ export function detectDomains(dmmf: DMMF.Document, schemaPath?: string) {
 function detectDomainsFromDMMF(dmmf: DMMF.Document) {
   const domains = new Map<string, DMMF.Model[]>();
 
-  // Check if models have schema location metadata
+  // Check if models have schema location metadata (Prisma 5.15.0+, not always in DMMF types)
   for (const model of dmmf.datamodel.models) {
-    // @ts-expect-error - schema location may not be in type definitions yet
-    const schemaLocation = model.schemaLocation;
+    const schemaLocation =
+      'schemaLocation' in model && typeof model.schemaLocation === 'string'
+        ? model.schemaLocation
+        : undefined;
 
-    if (schemaLocation && typeof schemaLocation === 'string') {
+    if (schemaLocation) {
       const domainName = extractDomainFromPath(schemaLocation);
       const existing = domains.get(domainName) || [];
-      // Cast to readonly to match DMMF type signature
       domains.set(domainName, [...existing, model]);
     }
   }

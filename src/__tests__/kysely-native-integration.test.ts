@@ -66,7 +66,7 @@ describe('Kysely Native Integration', () => {
       expect(typesContent).toMatch(/from ["']prisma-effect-kysely["']/);
 
       // Should generate schemas directly (no underscore prefix)
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const UserTable = Schema.Struct/);
 
       // Should use columnType for read-only ID fields
       expect(typesContent).toContain('columnType(');
@@ -79,7 +79,7 @@ describe('Kysely Native Integration', () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
       // Should generate schema for Post directly
-      expect(typesContent).toMatch(/export const Post = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const PostTable = Schema.Struct/);
 
       // Optional content field should use Schema.NullOr
       expect(typesContent).toMatch(/content:\s*Schema\.NullOr/);
@@ -95,8 +95,8 @@ describe('Kysely Native Integration', () => {
 
       // DB interface should use Schema.Schema.Type<typeof Model> to preserve phantom properties
       expect(typesContent).toMatch(/export interface DB \{/);
-      expect(typesContent).toMatch(/User:\s*Schema\.Schema\.Type<typeof User>/);
-      expect(typesContent).toMatch(/Post:\s*Schema\.Schema\.Type<typeof Post>/);
+      expect(typesContent).toMatch(/User:\s*Schema.Schema.Type<typeof UserTable>/);
+      expect(typesContent).toMatch(/Post:\s*Schema.Schema.Type<typeof PostTable>/);
 
       // Should NOT use SelectEncoded in DB interface
       expect(typesContent).not.toMatch(/User:\s*UserSelectEncoded/);
@@ -110,13 +110,13 @@ describe('Kysely Native Integration', () => {
 
       // Package provides Insertable, Selectable, Updateable utilities
       // DB interface uses Schema.Schema.Type<typeof Model> to preserve phantom properties
-      expect(typesContent).toMatch(/Schema\.Schema\.Type<typeof User>/);
+      expect(typesContent).toMatch(/Schema.Schema.Type<typeof UserTable>/);
 
       // Effect schemas use columnType for read-only ID fields
       expect(typesContent).toContain('columnType(');
 
       // Schema exports type alias for type usage
-      expect(typesContent).toMatch(/export type User = typeof User/);
+      expect(typesContent).toMatch(/export type User = typeof User.Type/);
     });
   });
 
@@ -125,7 +125,7 @@ describe('Kysely Native Integration', () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
       // Should generate schemas directly (no underscore prefix)
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const UserTable = Schema.Struct/);
 
       // Should still use columnType and generated helpers
       expect(typesContent).toContain('columnType(');
@@ -137,7 +137,7 @@ describe('Kysely Native Integration', () => {
       );
 
       // Should export type alias
-      expect(typesContent).toMatch(/export type User = typeof User/);
+      expect(typesContent).toMatch(/export type User = typeof User.Type/);
 
       // No type aliases for Select/Insert - consumers use type utilities
       expect(typesContent).not.toMatch(/export type UserSelect\s*=/);
@@ -177,12 +177,12 @@ describe('Kysely Native Integration', () => {
       const typesContent = await fs.readFile(path.join(outputDir, 'types.ts'), 'utf-8');
 
       // Schemas are exported directly
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
-      expect(typesContent).toMatch(/export const Post = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const UserTable = Schema.Struct/);
+      expect(typesContent).toMatch(/export const PostTable = Schema.Struct/);
 
       // Type aliases for type usage
-      expect(typesContent).toMatch(/export type User = typeof User/);
-      expect(typesContent).toMatch(/export type Post = typeof Post/);
+      expect(typesContent).toMatch(/export type User = typeof User.Type/);
+      expect(typesContent).toMatch(/export type Post = typeof Post.Type/);
     });
   });
 });

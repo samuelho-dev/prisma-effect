@@ -11,7 +11,7 @@ export class KyselyGenerator {
   /**
    * Generate DB interface for all models and join tables
    */
-  generateDBInterface(models: readonly DMMF.Model[], joinTables: JoinTableInfo[] = []) {
+  generateDBInterface(models: readonly DMMF.Model[], joinTables: readonly JoinTableInfo[] = []) {
     return generateDBInterface(models, joinTables);
   }
 

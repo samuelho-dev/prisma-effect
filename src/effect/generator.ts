@@ -52,13 +52,22 @@ export type ${name}Id = typeof ${name}Id.Type;`;
   }
 
   /**
-   * Generate the main model schema
-   * Exports as `User` directly (not `_User`)
-   * Package's type utilities derive Insertable<User>, Selectable<User>
+   * Generate the main model schema.
+   *
+   * Emits TWO schemas per table (Kysely's `PersonTable` → `Person` convention):
+   * - `{Name}Table` — the wrapper-laden struct (columnType/generated intact).
+   *   Drives the Kysely `DB` interface; its ColumnType/Generated brands give
+   *   `.insertInto`/`.updateTable` their insert/update variance. NEVER a query
+   *   result type (Kysely's own rule).
+   * - `{Name}` — the bare SELECT row, `Selectable({Name}Table)` (wrappers
+   *   stripped). This is the composable value+type-merged schema contracts,
+   *   RPC outputs, and decode boundaries bind to. Derived ONCE here so no
+   *   consumer re-wraps `Selectable(...)`.
    */
   generateModelSchema(model: DMMF.Model, fields: readonly DMMF.Field[]) {
     const fkMap = buildForeignKeyMap(model, this.dmmf.datamodel.models);
     const name = toPascalCase(model.name);
+    const tableName = `${name}Table`;
 
     // Collect @map renames; they are applied once as a struct-level encodeKeys
     // (Effect 4 removed the per-field Schema.fromKey pattern).
@@ -86,10 +95,11 @@ export type ${name}Id = typeof ${name}Id.Type;`;
             .join(', ')} }))`
         : '';
 
-    return `export const ${name} = Schema.Struct({
+    return `export const ${tableName} = Schema.Struct({
 ${fieldDefinitions}
 })${encodeKeys};
-export type ${name} = typeof ${name};`;
+export const ${name} = Selectable(${tableName});
+export type ${name} = typeof ${name}.Type;`;
   }
 
   /**
@@ -98,11 +108,12 @@ export type ${name} = typeof ${name};`;
   generateTypesHeader(hasEnums: boolean) {
     const header = generateFileHeader();
 
-    // Import runtime helpers from prisma-effect-kysely
-    // columnType and generated are used for field type annotations
+    // Import runtime helpers from prisma-effect-kysely.
+    // columnType/generated wrap the *Table struct fields (Kysely variance);
+    // Selectable strips them to produce the bare SELECT row schema.
     const imports = [
       `import { Schema } from "effect";`,
-      `import { columnType, generated, JsonValue } from "prisma-effect-kysely";`,
+      `import { columnType, generated, JsonValue, Selectable } from "prisma-effect-kysely";`,
     ];
 
     if (hasEnums) {
@@ -118,7 +129,7 @@ export type ${name} = typeof ${name};`;
   /**
    * Generate schemas for all join tables
    */
-  generateJoinTableSchemas(joinTables: JoinTableInfo[]) {
+  generateJoinTableSchemas(joinTables: readonly JoinTableInfo[]) {
     return joinTables.map((jt) => generateJoinTableSchema(jt, this.dmmf)).join('\n\n');
   }
 }

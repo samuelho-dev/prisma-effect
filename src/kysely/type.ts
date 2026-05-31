@@ -81,7 +81,11 @@ export function buildKyselyFieldType(baseFieldType: string, field: DMMF.Field, m
 export function generateDBInterfaceEntry(model: DMMF.Model) {
   const tableName = model.dbName || model.name;
   const modelName = toPascalCase(model.name);
-  return `  ${tableName}: Schema.Schema.Type<typeof ${modelName}>;`;
+  // DB interface references the wrapper-laden {Name}Table struct (NOT the bare
+  // Selectable row) so Kysely's Selectable/Insertable/Updateable variance works
+  // on .insertInto/.updateTable. Kysely rule: the table type is never a query
+  // result type — the bare row is.
+  return `  ${tableName}: Schema.Schema.Type<typeof ${modelName}Table>;`;
 }
 
 /**
@@ -107,7 +111,7 @@ export function generateJoinTableDBInterfaceEntry(joinTable: JoinTableInfo) {
  */
 export function generateDBInterface(
   models: readonly DMMF.Model[],
-  joinTables: JoinTableInfo[] = []
+  joinTables: readonly JoinTableInfo[] = []
 ) {
   const modelEntries = Array.from(models).map(generateDBInterfaceEntry).join('\n');
 

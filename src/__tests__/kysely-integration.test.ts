@@ -63,8 +63,8 @@ describe('Kysely Integration - Functional Tests', () => {
 
     it('should generate schemas directly without underscore prefix', () => {
       // Schemas are exported directly (e.g., User, Post)
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
-      expect(typesContent).toMatch(/export const Post = Schema\.Struct/);
+      expect(typesContent).toMatch(/export const UserTable = Schema.Struct/);
+      expect(typesContent).toMatch(/export const PostTable = Schema.Struct/);
     });
 
     it('should use generated() for fields with @default', () => {
@@ -73,9 +73,9 @@ describe('Kysely Integration - Functional Tests', () => {
     });
 
     it('should export schemas with type aliases', () => {
-      // Pattern: export const User = Schema.Struct({...}); export type User = typeof User;
-      expect(typesContent).toMatch(/export const User = Schema\.Struct/);
-      expect(typesContent).toMatch(/export type User = typeof User/);
+      // Pattern: export const User = Schema.Struct({...}); export type User = typeof User.Type;
+      expect(typesContent).toMatch(/export const UserTable = Schema.Struct/);
+      expect(typesContent).toMatch(/export type User = typeof User.Type/);
     });
 
     it('should generate DB interface with Schema.Schema.Type pattern', () => {
@@ -114,7 +114,7 @@ describe('Kysely Integration - Functional Tests', () => {
       // CompositeIdModel has @@map("composite_id_table")
       // DB interface uses mapped table name with Schema.Schema.Type<typeof Model>
       expect(typesContent).toMatch(
-        /composite_id_table:\s*Schema\.Schema\.Type<typeof CompositeIdModel>/
+        /composite_id_table:\s*Schema.Schema.Type<typeof CompositeIdModelTable>/
       );
     });
   });
