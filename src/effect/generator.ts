@@ -120,7 +120,10 @@ export type ${name} = typeof ${name}.Type;`;
       // Import PascalCase enum schemas
       const enumImports = this.dmmf.datamodel.enums.map((e) => toPascalCase(e.name)).join(', ');
 
-      imports.push(`import { ${enumImports} } from "./enums";`);
+      // Emit a `.js` extension so the generated file resolves under NodeNext / verbatimModuleSyntax
+      // (TS2835). Bundler/Node16 resolution also accept the explicit extension, so this is strictly
+      // more compatible than the bare specifier.
+      imports.push(`import { ${enumImports} } from "./enums.js";`);
     }
 
     return `${header}\n\n${imports.join('\n')}`;

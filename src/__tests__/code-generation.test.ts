@@ -205,8 +205,8 @@ describe('Code Generation - E2E and Validation', () => {
     });
 
     it('should re-export from index', () => {
-      expect(indexContent).toMatch(/export \* from ["']\.\/types["']/);
-      expect(indexContent).toMatch(/export \* from ["']\.\/enums["']/);
+      expect(indexContent).toMatch(/export \* from ["']\.\/types\.js["']/);
+      expect(indexContent).toMatch(/export \* from ["']\.\/enums\.js["']/);
     });
 
     it('should not export duplicate strict alias names', () => {

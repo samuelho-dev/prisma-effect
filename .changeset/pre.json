@@ -9,6 +9,7 @@
     "insertable-null-and-jointable-fk",
     "jointable-db-interface-physical-columns",
     "legacy-customtype-detector",
+    "nodenext-import-extensions",
     "table-row-split",
     "uuid-detection-no-name-inference"
   ]

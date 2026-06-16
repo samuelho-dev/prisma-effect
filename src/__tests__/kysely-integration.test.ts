@@ -236,8 +236,8 @@ describe('Kysely Integration - Functional Tests', () => {
     });
 
     it('should re-export all types from index', () => {
-      expect(indexContent).toMatch(/export \* from ["']\.\/types["']/);
-      expect(indexContent).toMatch(/export \* from ["']\.\/enums["']/);
+      expect(indexContent).toMatch(/export \* from ["']\.\/types\.js["']/);
+      expect(indexContent).toMatch(/export \* from ["']\.\/enums\.js["']/);
     });
 
     it('should generate consistent naming conventions', () => {

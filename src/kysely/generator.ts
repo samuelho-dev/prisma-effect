@@ -19,6 +19,8 @@ export class KyselyGenerator {
    * Generate index.ts re-export file
    */
   generateIndexFile() {
-    return `export * from "./enums";\nexport * from "./types";`;
+    // `.js` extensions so the barrel resolves under NodeNext / verbatimModuleSyntax (TS2835);
+    // Bundler/Node16 resolution accept them too.
+    return `export * from "./enums.js";\nexport * from "./types.js";`;
   }
 }
