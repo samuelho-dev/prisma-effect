@@ -271,46 +271,40 @@ describe('Enum Generation - Functional Tests', () => {
     it('should generate executable enum code', () => {
       const generatedCode = generateEnumSchema(mockEnum);
 
-      // Verify generated code contains expected structures (minimal checks).
-      // USER_ROLE differs from its PascalCase (UserRole), so the TS enum keeps
-      // its raw name and the const is PascalCase — no collision, no suffix.
-      expect(generatedCode).toContain('export enum USER_ROLE');
-      expect(generatedCode).toContain('Schema.Enum');
-      expect(generatedCode).toContain('export const UserRole = Schema.Enum(USER_ROLE)');
-      expect(generatedCode).toContain('export type UserRole = Schema.Schema.Type<typeof UserRole>');
+      // Canonical Effect-v4 pattern: a Schema.Literals string-union (no TS enum). The PascalCase
+      // export IS the Schema; the type alias reads its `.Type`.
+      expect(generatedCode).toContain(
+        'export const UserRole = Schema.Literals(["ADMIN", "USER", "GUEST"])'
+      );
+      expect(generatedCode).toContain('export type UserRole = typeof UserRole.Type');
     });
 
     it('should generate valid TypeScript that can be executed', () => {
       const generatedCode = generateEnumSchema(mockEnum);
 
-      // Verify it's valid TypeScript (would compile without errors)
-      expect(generatedCode).toMatch(/export enum USER_ROLE/);
-      expect(generatedCode).toMatch(/ADMIN = "ADMIN"/);
-      expect(generatedCode).toMatch(/USER = "USER"/);
-      expect(generatedCode).toMatch(/GUEST = "GUEST"/);
+      // The literals carry every member as a string literal.
+      expect(generatedCode).toMatch(/Schema\.Literals\(\[/);
+      expect(generatedCode).toMatch(/"ADMIN"/);
+      expect(generatedCode).toMatch(/"USER"/);
+      expect(generatedCode).toMatch(/"GUEST"/);
     });
 
-    it('should use Schema.Enum not Schema.Literal', () => {
+    it('should use Schema.Literals (the canonical v4 finite-set schema), not Schema.Enum', () => {
       const generatedCode = generateEnumSchema(mockEnum);
 
-      // Modern pattern: Schema.Enum
-      expect(generatedCode).toContain('Schema.Enum(USER_ROLE)');
-
-      // Old pattern should NOT exist
-      expect(generatedCode).not.toContain('Schema.Literal');
+      // Schema.Literals gives Type==Encoded==the string union — Kysely-friendly + literal domain
+      // types. Schema.Enum (Type==the TS enum) is only for interop with a pre-existing enum object.
+      expect(generatedCode).toContain('Schema.Literals(');
+      expect(generatedCode).not.toContain('Schema.Enum');
+      // No TS enum is emitted anymore.
+      expect(generatedCode).not.toContain('export enum');
     });
 
-    it('should preserve enum name but use PascalCase for Schema/Type', () => {
+    it('should use PascalCase for the Schema/Type name', () => {
       const generatedCode = generateEnumSchema(mockEnum);
 
-      // Original SCREAMING_SNAKE_CASE preserved for raw enum
-      expect(generatedCode).toContain('enum USER_ROLE');
-
-      // PascalCase for Schema wrapper (no Schema suffix - the PascalCase name IS the Schema)
-      expect(generatedCode).toContain('export const UserRole = Schema.Enum(USER_ROLE)');
-      expect(generatedCode).toContain('export type UserRole = Schema.Schema.Type<typeof UserRole>');
-
-      // Should NOT use snake_case for schema/type
+      expect(generatedCode).toContain('export const UserRole = Schema.Literals(');
+      expect(generatedCode).toContain('export type UserRole = typeof UserRole.Type');
       expect(generatedCode).not.toContain('user_role_schema');
     });
 
@@ -325,11 +319,8 @@ describe('Enum Generation - Functional Tests', () => {
 
       const generatedFile = generateEnumsFile(mockEnums);
 
-      // Verify file structure
       expect(generatedFile).toContain('import { Schema } from "effect"');
-      // STATUS == PascalCase(STATUS), so the enum is suffixed to avoid collision.
-      expect(generatedFile).toContain('export enum STATUSEnum');
-      expect(generatedFile).toContain('export const STATUS = Schema.Enum(STATUSEnum)');
+      expect(generatedFile).toContain('export const STATUS = Schema.Literals(["ACTIVE"])');
     });
   });
 
@@ -347,10 +338,11 @@ describe('Enum Generation - Functional Tests', () => {
 
       const generatedCode = generateEnumSchema(mockMappedEnum);
 
-      // Should still generate valid enum. TaskStatus == PascalCase(TaskStatus),
-      // so the enum is suffixed (TaskStatusEnum) to avoid the const collision.
-      expect(generatedCode).toContain('export enum TaskStatusEnum');
-      expect(generatedCode).toContain('Schema.Enum(TaskStatusEnum)');
+      // The @map dbName becomes the literal value (the actual stored string).
+      expect(generatedCode).toContain('export const TaskStatus = Schema.Literals(');
+      expect(generatedCode).toContain('"todo_db"');
+      expect(generatedCode).toContain('"in_progress_db"');
+      expect(generatedCode).toContain('"done_db"');
     });
   });
 
@@ -371,13 +363,8 @@ describe('Enum Generation - Functional Tests', () => {
 
       const generatedFile = generateEnumsFile(mockEnums);
 
-      // Both enums should be present. toPascalCase('ROLE') = 'ROLE' (all-caps
-      // single words stay as-is), so both collide with their const and the TS
-      // enums are suffixed (ROLEEnum / STATUSEnum) while the consts keep the name.
-      expect(generatedFile).toContain('export enum ROLEEnum');
-      expect(generatedFile).toContain('export enum STATUSEnum');
-      expect(generatedFile).toContain('export const ROLE = Schema.Enum(ROLEEnum)');
-      expect(generatedFile).toContain('export const STATUS = Schema.Enum(STATUSEnum)');
+      expect(generatedFile).toContain('export const ROLE = Schema.Literals(["ADMIN"])');
+      expect(generatedFile).toContain('export const STATUS = Schema.Literals(["ACTIVE"])');
     });
   });
 });

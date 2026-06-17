@@ -4,39 +4,20 @@ import { generateFileHeader } from '../utils/codegen.js';
 import { toPascalCase } from '../utils/naming.js';
 
 /**
- * Generate TypeScript enum + Effect Schema.Enum wrapper
- *
- * Output pattern:
- * - Native TS enum with SCREAMING_SNAKE_CASE (internal, for Schema.Enum)
- * - PascalCase export IS the Schema (so it works in Schema.Struct)
- * - Type alias with same name (value + type pattern)
+ * Generate an Effect `Schema.Literals` for a Prisma enum — the canonical Effect-v4 way to model a
+ * finite string set (Effect's own modules use `Schema.Literals` for status sets; `Schema.Enum` is
+ * reserved for interop with a pre-existing TS enum object). The result:
+ * - `Type` and `Encoded` are BOTH the string literal union, so the value works as a plain string
+ *   in queries (Kysely-friendly) and as a literal domain type — no TS-enum value juggling.
+ * - The PascalCase export IS the Schema (usable directly in `Schema.Struct` fields).
+ * - A type alias of the same name (value + type pattern).
  */
 export function generateEnumSchema(enumDef: DMMF.DatamodelEnum) {
-  // PascalCase name is exported as BOTH the Schema value AND the type.
   const pascalName = toPascalCase(enumDef.name);
-  // The native TS enum keeps its original Prisma name (usually SCREAMING_SNAKE).
-  // But when that already equals the PascalCase const (e.g. `Role` -> `Role`),
-  // TypeScript forbids the enum/const identifier from merging, so suffix the
-  // enum with `Enum` (`Role` -> internal `RoleEnum`) to keep them distinct.
-  const enumName = enumDef.name === pascalName ? `${pascalName}Enum` : enumDef.name;
+  const literals = enumDef.values.map((v) => `"${getEnumValueDbName(v)}"`).join(', ');
 
-  // Generate native TypeScript enum members
-  const enumMembers = enumDef.values
-    .map((v) => {
-      const value = getEnumValueDbName(v);
-      return `  ${v.name} = "${value}"`;
-    })
-    .join(',\n');
-
-  // Export PascalCase as the Schema (not raw enum)
-  // This allows PayoutStatus to be used directly in Schema.Struct fields
-  // Also export type with same name for Insertable<User> pattern
-  return `export enum ${enumName} {
-${enumMembers}
-}
-
-export const ${pascalName} = Schema.Enum(${enumName});
-export type ${pascalName} = Schema.Schema.Type<typeof ${pascalName}>;`;
+  return `export const ${pascalName} = Schema.Literals([${literals}]);
+export type ${pascalName} = typeof ${pascalName}.Type;`;
 }
 
 /**
