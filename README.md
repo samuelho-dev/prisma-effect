@@ -22,7 +22,7 @@ bun add prisma-effect-kysely@next effect@beta
 
 > **Effect 4 support is a pre-release.** It requires `effect@^4.0.0-beta` and is
 > published under the `next` dist-tag, not `latest`. It is **tested against
-> `effect@4.0.0-beta.70`**; later betas may introduce breaking Schema changes. A
+> `effect@4.0.0-beta.83`**; later betas may introduce breaking Schema changes. A
 > generator-output compile check (`bun run test:emit`) guards the emitted code
 > against the installed Effect, but pin `effect` if you need stability during the
 > beta. The `next` line will be promoted to `latest` when Effect 4 goes stable.
@@ -36,7 +36,7 @@ bun add prisma-effect-kysely@next effect@beta
 >
 > Effect 4 and Effect 3 are not interchangeable: the generated output uses
 > Effect-4-only Schema APIs (`Schema.Date`, `Schema.String.check(Schema.isUUID())`,
-> `Schema.encodeKeys`, `Schema.Enum`, …). Stay on the `latest` line if you are on
+> `Schema.encodeKeys`, `Schema.Literals`, …). Stay on the `latest` line if you are on
 > Effect 3.
 
 ## Setup
@@ -56,44 +56,73 @@ npx prisma generate
 
 Three files: `enums.ts`, `types.ts`, `index.ts`.
 
+`enums.ts` emits Effect-v4 finite-set schemas. No TypeScript enum is generated;
+enum values are plain string literals, including values mapped with Prisma
+`@map`.
+
+```typescript
+import { Schema } from 'effect';
+
+export const Role = Schema.Literals(['ADMIN', 'GUEST', 'USER']);
+export type Role = typeof Role.Type;
+```
+
+`types.ts` emits a wrapper-laden table schema for Kysely and a bare row schema
+for application contracts and decode boundaries.
+
 ```typescript
 import { Schema } from 'effect';
 import { columnType, generated, Selectable } from 'prisma-effect-kysely';
+import { Role } from './enums.js';
 
 // Branded ID
 export const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
 export type UserId = typeof UserId.Type;
 
-// Model schema
-export const User = Schema.Struct({
+// Kysely table schema: keeps columnType/generated wrappers
+export const UserTable = Schema.Struct({
   id: columnType(UserId, Schema.Never, Schema.Never),
   email: Schema.String,
+  role: Role,
   createdAt: generated(Schema.Date),
 });
-export type User = typeof User;
+
+// Bare SELECT row schema
+export const User = Selectable(UserTable);
+export type User = typeof User.Type;
 
 // Kysely DB interface
 export interface DB {
-  User: Selectable<User>;
+  User: Schema.Schema.Type<typeof UserTable>;
 }
+```
+
+`index.ts` re-exports with explicit `.js` extensions so generated code works in
+NodeNext projects:
+
+```typescript
+export * from './enums.js';
+export * from './types.js';
 ```
 
 ## Consumer Usage
 
 ```typescript
-import { Selectable, Insertable, Updateable } from "prisma-effect-kysely";
-import { User, UserId, DB } from "./generated";
+import type { Insertable, Updateable } from 'prisma-effect-kysely';
+import { Kysely } from 'kysely';
+import { UserTable, type DB, type User, type UserId } from './generated/index.js';
 
 function getUser(id: UserId): Promise<User> { ... }
 
-type UserSelect = Selectable<typeof User>;
-type UserInsert = Insertable<typeof User>;
-type UserUpdate = Updateable<typeof User>;
+type UserInsert = Insertable<typeof UserTable>;
+type UserUpdate = Updateable<typeof UserTable>;
 
 const db = new Kysely<DB>({ ... });
 ```
 
 Schema names are PascalCase regardless of Prisma model name (`session_preference` → `SessionPreference`).
+Generated enum types are string literal unions; use `"ADMIN"` rather than
+`Role.ADMIN`.
 
 ## Field Behavior
 
@@ -114,7 +143,7 @@ Schema names are PascalCase regardless of Prisma model name (`session_preference
 | DateTime    | `Schema.Date`                          |
 | Json        | recursive `JsonValue`                  |
 | Bytes       | `Schema.Uint8Array`                    |
-| Enum        | `Schema.Enum(...)`                     |
+| Enum        | `Schema.Literals([...])`               |
 | UUID        | `Schema.String.check(Schema.isUUID())` |
 
 Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
@@ -225,6 +254,11 @@ The CI workflow (`.github/workflows/release.yml`) triggers on both branches and
 uses the changesets action's `version` + `publish` inputs; `changeset publish`
 selects the dist-tag from pre mode. Requires the `NPM_TOKEN` repo secret. Do not
 enter pre mode on `main` — it blocks stable releases until you exit.
+
+Keep `.changeset/` limited to active release state: `config.json`, `pre.json`
+while the `next` branch is in pre mode, `README.md`, and any unconsumed
+changeset files. Once a version commit has moved a changeset into
+`CHANGELOG.md` and `pre.json`, remove the consumed markdown file.
 
 ## License
 

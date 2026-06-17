@@ -1,6 +1,6 @@
 ---
 scope: project
-updated: 2026-04-30
+updated: 2026-06-17
 relates_to:
   - src/kysely/helpers.ts
   - src/effect/generator.ts
@@ -36,7 +36,7 @@ Entry: `src/generator/index.ts` exposes the Prisma generator manifest and delega
 Generators:
 
 - `src/effect/generator.ts` — model schemas + branded IDs
-- `src/effect/enum.ts` — Prisma enums → `Schema.Enum`
+- `src/effect/enum.ts` — Prisma enums → `Schema.Literals`
 - `src/effect/join-table.ts` — implicit M2M join tables
 - `src/kysely/generator.ts` — `DB` interface
 
@@ -46,12 +46,13 @@ Support: `src/utils/file-manager.ts` (FS), `src/utils/templates.ts` (Prettier fo
 
 Three files in the configured output directory:
 
-- **enums.ts** — `Schema.Enum` per Prisma enum (respects `@map`)
+- **enums.ts** — `Schema.Literals` per Prisma enum (respects `@map`; no TS enum)
 - **types.ts** — direct exports (no underscore prefix, no wrapper functions):
   - Branded ID schema + type per model
-  - Model `Schema.Struct` + type alias
-  - `DB` interface using `Schema.Schema.Type<typeof Model>` per table (preserves the `__select__/__insert__/__update__` brands Kysely needs; respects `@@map`)
-- **index.ts** — re-exports
+  - `{Name}Table` `Schema.Struct` with Kysely wrappers intact
+  - Bare `{Name}` SELECT row schema as `Selectable({Name}Table)` + type alias
+  - `DB` interface using `Schema.Schema.Type<typeof {Name}Table>` per table (preserves the `__select__/__insert__/__update__` brands Kysely needs; respects `@@map`)
+- **index.ts** — re-exports `./enums.js` and `./types.js`
 
 ## Generated shape
 
@@ -59,19 +60,28 @@ Three files in the configured output directory:
 export const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
 export type UserId = typeof UserId.Type;
 
-export const User = Schema.Struct({
+export const Role = Schema.Literals(['ADMIN', 'USER']);
+export type Role = typeof Role.Type;
+
+export const UserTable = Schema.Struct({
   id: columnType(UserId, Schema.Never, Schema.Never),
   email: Schema.String,
+  role: Role,
   createdAt: generated(Schema.Date),
 });
-export type User = typeof User;
+
+export const User = Selectable(UserTable);
+export type User = typeof User.Type;
 
 export interface DB {
-  User: Schema.Schema.Type<typeof User>;
+  User: Schema.Schema.Type<typeof UserTable>;
 }
 ```
 
-Consumers use `Selectable<typeof User>` / `Insertable<typeof User>` / `Updateable<typeof User>` from `prisma-effect-kysely`. Branded IDs imported directly.
+Consumers use bare `User` as the SELECT row type and `Insertable<typeof UserTable>` /
+`Updateable<typeof UserTable>` from `prisma-effect-kysely` for write shapes. Branded
+IDs are imported directly. Enum values are plain strings (`"ADMIN"`), not TS enum
+members (`Role.ADMIN`).
 
 ## Field behavior
 
@@ -87,7 +97,7 @@ Consumers use `Selectable<typeof User>` / `Insertable<typeof User>` / `Updateabl
 
 Prisma stores `A`/`B` columns; we emit semantic snake_case fields on the struct, then map them to the DB columns with a struct-level `.pipe(Schema.encodeKeys({ <model_a>_id: "A", <model_b>_id: "B" }))`. FK columns are `columnType(Id, Id, Schema.Never)` — insertable (you supply both keys when linking) but read-only on update (composite-PK rows are inserted/deleted, not updated). Join tables get NO branded ID (composite key).
 
-The `DB`-interface entry for a join table uses `Schema.Codec.Encoded<typeof JoinTable>` (the **encoded** `A`/`B` shape), NOT `Schema.Schema.Type` — Kysely uses DB field names as literal SQL identifiers, and the physical columns are `A`/`B`. The semantic `*_id` names exist only on the decode side (`Schema.decode` output). Regular model tables still use `Schema.Schema.Type<typeof Model>`.
+The `DB`-interface entry for a join table uses `Schema.Codec.Encoded<typeof JoinTable>` (the **encoded** `A`/`B` shape), NOT `Schema.Schema.Type` — Kysely uses DB field names as literal SQL identifiers, and the physical columns are `A`/`B`. The semantic `*_id` names exist only on the decode side (`Schema.decode` output). Regular model tables still use `Schema.Schema.Type<typeof {Name}Table>`.
 
 ## UUID detection
 
@@ -113,7 +123,7 @@ to mark non-native UUID columns.
 | DateTime    | `Schema.Date`         | native Date both sides (Effect 4)             |
 | Json        | recursive `JsonValue` | from `prisma-effect-kysely`                   |
 | Bytes       | `Schema.Uint8Array`   |                                               |
-| Enum        | imported enum schema  | `Schema.Enum(...)`                            |
+| Enum        | imported enum schema  | `Schema.Literals([...])` string literal union |
 
 Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
@@ -153,12 +163,12 @@ can `Effect.catchTag` cleanly.
 
 ## Working in this repo
 
-- Run `bun run test` (350 unit + DMMF tests) and `bun run test:integration` (pglite roundtrip) to baseline before changes
+- Run `bun run test` and `bun run test:integration` (pglite roundtrip) to baseline before changes
 - Generator must be rebuilt before `prisma generate` picks up changes
 - Test fixtures: `src/__tests__/fixtures/test.prisma`
 - Generated headers include timestamp + edit warning
-- Direct exports only — generated code exports schemas directly (`export const User = Schema.Struct(...)`); never reintroduce underscore prefixes or wrapper functions in the output
+- Direct exports only — generated code exports schemas directly (`export const UserTable = Schema.Struct(...)`, `export const User = Selectable(UserTable)`); never reintroduce underscore prefixes or wrapper functions in the output
 - Run `bun run test:emit` after touching any generator emit string — it generates against the fixture and type-checks the emitted code against the installed Effect (unit tests only string-match, they don't compile output)
-- `effect` targets **4.x (beta)**, peer dep `^4.0.0-beta`, dev pin `4.0.0-beta.70`. `src/kysely/helpers.ts` uses the public `Schema.Struct.fields` API (not `effect/SchemaAST` internals — those were reworked in v4). Key v4 names: `Schema.Codec` (was `Schema.Schema`), `Schema.Top` (was `Schema.Schema.All`), `Schema.revealCodec` (was `asSchema`), `.annotate()` (was `.annotations()`), `Schema.Date` (was `DateFromSelf`), `Schema.Union([...])` (was variadic), `Schema.encodeKeys` (was `propertySignature(...).pipe(fromKey(...))`).
+- `effect` targets **4.x (beta)**, peer dep `^4.0.0-beta`, dev pin `4.0.0-beta.83`. `src/kysely/helpers.ts` uses the public `Schema.Struct.fields` API (not `effect/SchemaAST` internals — those were reworked in v4). Key v4 names: `Schema.Codec` (was `Schema.Schema`), `Schema.Top` (was `Schema.Schema.All`), `Schema.revealCodec` (was `asSchema`), `.annotate()` (was `.annotations()`), `Schema.Date` (was `DateFromSelf`), `Schema.Literals([...])` (multi-literal finite sets), `Schema.Union([...])` (was variadic), `Schema.encodeKeys` (was `propertySignature(...).pipe(fromKey(...))`).
 - `@customType(...)` strings are emitted verbatim and must be valid Effect 4 syntax. `detectLegacyEffectV3Syntax()` in `src/utils/annotations.ts` warns (never rewrites) on known v3 patterns at generate time. v3 filters → `.check(Schema.is*)`; variadic `Union`/`Tuple`/multi-`Literal` → array form.
 - Consumers must pin the exact `6.0.0-next.x` version — a `"*"` range resolves to the stable `5.x` line (npm/pnpm exclude prereleases from ranges), which silently pulls the v3 types.

@@ -31,7 +31,7 @@ from memory or v3 docs.
 High-value files for this generator:
 
 - `repos/effect/packages/effect/src/Schema.ts` — `Top`, `Bottom`, `Codec`,
-  `Struct`, `brand`, `check`, `encodeKeys`, `Enum`, the `is*` filters. This is
+  `Struct`, `brand`, `check`, `encodeKeys`, `Literals`, `Enum`, the `is*` filters. This is
   the file to consult for any `Schema.*` question. (`Top` is the structural base
   every schema must satisfy; `Bottom<...>` is its 15-param shape.)
 - `repos/effect/packages/effect/src/SchemaAST.ts` — AST node types (`Objects`,
@@ -51,8 +51,11 @@ High-value files for this generator:
   `Schema.check(Schema.isBetween({ minimum, maximum }))`).
 - Variadic combinators take arrays: `Schema.Union(a,b)` → `Schema.Union([a,b])`,
   `Schema.Literal(a,b)` → `Schema.Literals([a,b])`, `Schema.Tuple(...)` → array.
-- `Schema.Enums` → `Schema.Enum`; `Schema.propertySignature(...).pipe(Schema.fromKey(...))`
-  → struct-level `Schema.encodeKeys({ tsName: "db_col" })`.
+- `Schema.Enums` → `Schema.Enum` for existing TS enum interop. For generated
+  Prisma enum value sets, prefer `Schema.Literals([...])` so Type and Encoded
+  are the same string literal union.
+- `Schema.propertySignature(...).pipe(Schema.fromKey(...))` → struct-level
+  `Schema.encodeKeys({ tsName: "db_col" })`.
 
 ## Updating the vendored source
 

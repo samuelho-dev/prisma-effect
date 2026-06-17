@@ -32,9 +32,13 @@ Schema.Union([A, B]); // ARRAY in v4 (was variadic Union(A, B))
 Schema.Literal('x'); // single literal — unchanged
 Schema.Literals(['a', 'b']); // multiple — was Schema.Literal('a','b')
 Schema.Record(Schema.String, Schema.Number);
-Schema.Enum(NativeTsEnum); // was Schema.Enums; pass a TS enum (or const obj)
+Schema.Enum(NativeTsEnum); // was Schema.Enums; only for existing TS enum/const object interop
 Schema.suspend(() => JsonValue); // recursive schemas
 ```
+
+Generated Prisma enums should use `Schema.Literals([...])`, not `Schema.Enum`.
+That keeps `Type` and `Encoded` as the same string literal union, which is the
+shape Kysely expects for enum columns.
 
 ## Filters: `.check(Schema.is*)`
 

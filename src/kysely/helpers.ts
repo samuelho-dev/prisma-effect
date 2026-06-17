@@ -16,12 +16,12 @@ import type {
  *
  * For Effect Schemas (recommended - full type safety):
  * ```typescript
- * import { Selectable, Insertable, Updateable } from 'prisma-effect-kysely';
- * import { User } from './generated/types';
+ * import type { Insertable, Updateable } from 'prisma-effect-kysely';
+ * import { UserTable, type User } from './generated/index.js';
  *
- * type UserSelect = Selectable<User>;
- * type UserInsert = Insertable<User>;
- * type UserUpdate = Updateable<User>;
+ * type UserSelect = User;
+ * type UserInsert = Insertable<typeof UserTable>;
+ * type UserUpdate = Updateable<typeof UserTable>;
  * ```
  *
  * Note: This package exports branded versions of ColumnType and Generated that
@@ -686,7 +686,8 @@ export function Updateable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
 
 // ============================================================================
 // Type Utilities (Work directly with Schema types)
-// Usage: Selectable<User>, Insertable<User>, Updateable<User>
+// Usage: Selectable<typeof UserTable>, Insertable<typeof UserTable>,
+// Updateable<typeof UserTable>. Generated bare `User` is already Selectable(UserTable).
 // Note: Stripping types are defined earlier in the file (before schema functions)
 // ============================================================================
 
@@ -699,20 +700,20 @@ export function Updateable<Type, Encoded>(schema: Schema.Codec<Type, Encoded>) {
  * Generated<T>/ColumnType remain in the DB interface for INSERT recognition,
  * but Selectable<T> gives you the clean type matching query results.
  *
- * @example type UserSelect = Selectable<User>;
+ * @example type UserSelect = Selectable<typeof UserTable>;
  */
 export type Selectable<T extends Schema.Top> = StripKyselyWrappersFromObject<Schema.Schema.Type<T>>;
 
 /**
  * Extract INSERT type from schema.
  * Omits fields with `never` insert type (read-only IDs, generated fields).
- * @example type UserInsert = Insertable<User>;
+ * @example type UserInsert = Insertable<typeof UserTable>;
  */
 export type Insertable<T extends Schema.Top> = CustomInsertable<Schema.Schema.Type<T>>;
 
 /**
  * Extract UPDATE type from schema.
  * Omits fields with `never` update type, makes all fields optional.
- * @example type UserUpdate = Updateable<User>;
+ * @example type UserUpdate = Updateable<typeof UserTable>;
  */
 export type Updateable<T extends Schema.Top> = CustomUpdateable<Schema.Schema.Type<T>>;

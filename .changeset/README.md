@@ -11,7 +11,7 @@ Changesets are a way to declare changes that should be reflected in the package 
 When you make changes to the codebase, run:
 
 ```bash
-pnpm changeset
+bun changeset
 ```
 
 This will prompt you to:
@@ -31,11 +31,19 @@ The CLI will create a new file in `.changeset/` with your changes.
    - Creates a git tag (e.g., `v1.15.0`)
    - Creates a GitHub release with notes
 
+The `release/next` branch is in Changesets pre mode (`pre.json`, tag `next`) for
+the Effect 4 beta line. Keep this directory clean after version commits:
+
+- Keep `README.md`, `config.json`, and `pre.json` while pre mode is active.
+- Keep only unconsumed changeset markdown files.
+- Delete changeset markdown files once their contents are represented in
+  `CHANGELOG.md` and their IDs are recorded in `pre.json`.
+
 ## Configuration
 
 See `.changeset/config.json` for the Changesets configuration. Key settings:
 
-- **changelog**: Uses GitHub changelog format with PR/commit links
+- **changelog**: Uses the default Changesets changelog generator
 - **access**: Public (package is published publicly)
 - **baseBranch**: `main`
 

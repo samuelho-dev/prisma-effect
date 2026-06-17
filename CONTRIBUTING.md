@@ -6,8 +6,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ### Prerequisites
 
-- **Node.js**: >= 18.0.0
-- **pnpm**: >= 8.0.0 (required - this project uses pnpm workspaces)
+- **Node.js**: >= 20.0.0
+- **Bun**: >= 1.0.0 (Bun is the only package manager for this repo)
 
 ### Setup (< 5 minutes)
 
@@ -21,18 +21,18 @@ Thank you for your interest in contributing! This document provides guidelines a
 2. **Install Dependencies**
 
    ```bash
-   pnpm install
+   bun install
    ```
 
 3. **Run Tests**
 
    ```bash
-   pnpm test
+   bun run test
    ```
 
 4. **Build**
    ```bash
-   pnpm run build
+   bun run build
    ```
 
 That's it! You're ready to contribute.
@@ -62,9 +62,9 @@ That's it! You're ready to contribute.
 3. **Run quality checks**
 
    ```bash
-   pnpm run lint        # Check code style
-   pnpm run typecheck   # Check TypeScript types
-   pnpm run test        # Run tests
+   bun run lint        # Check code style
+   bun run typecheck   # Check TypeScript types
+   bun run test        # Run tests
    ```
 
 4. **Commit your changes**
@@ -98,8 +98,8 @@ That's it! You're ready to contribute.
 Run manually:
 
 ```bash
-pnpm run lint:fix    # Fix linting issues
-pnpm run format      # Format all files
+bun run lint:fix    # Fix linting issues
+bun run format      # Format all files
 ```
 
 ### Commit Messages
@@ -133,9 +133,9 @@ test: add edge cases for enum generation
 ### Running Tests
 
 ```bash
-pnpm test                # Run all tests
-pnpm run test:watch      # Watch mode
-pnpm run test:coverage   # Coverage report
+bun run test           # Run all tests
+bun run test:watch     # Watch mode
+bun run test:coverage  # Coverage report
 ```
 
 ### Writing Tests
@@ -198,7 +198,7 @@ src/
 3. **Include**:
    - Minimal reproduction case
    - Expected vs actual behavior
-   - Your environment (Node, pnpm, Prisma versions)
+   - Your environment (Node, Bun, Prisma versions)
    - Relevant schema snippet
 
 ## ✨ Requesting Features
@@ -217,15 +217,17 @@ src/
 
 ## 🔐 Security
 
-See [SECURITY.md](SECURITY.md) for reporting security vulnerabilities.
+Report security issues privately through GitHub Security Advisories when
+available. If that is not available, open a minimal issue that avoids exposing
+sensitive details publicly.
 
 ## ✅ Pull Request Checklist
 
 Before submitting your PR, ensure:
 
 - [ ] Code follows project style (ESLint/Prettier pass)
-- [ ] All tests pass (`pnpm test`)
-- [ ] TypeScript compiles (`pnpm run typecheck`)
+- [ ] All tests pass (`bun run test`)
+- [ ] TypeScript compiles (`bun run typecheck`)
 - [ ] Test coverage maintained (> 90%)
 - [ ] New features have tests
 - [ ] Breaking changes are documented
@@ -244,7 +246,7 @@ Contributors will be:
 
 - **Questions**: Open a GitHub Discussion
 - **Bugs**: Open a GitHub Issue
-- **Security**: See SECURITY.md
+- **Security**: Use GitHub Security Advisories when available
 - **Chat**: GitHub Discussions
 
 ## 📜 License
