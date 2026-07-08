@@ -18,8 +18,8 @@ describe('TS2589 regression: deep type instantiation', () => {
   const UserId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand('UserId'));
 
   // Enum-like types
-  const SellerStatus = Schema.Literal('ACTIVE', 'INACTIVE', 'BANNED', 'PENDING');
-  const PayoutSchedule = Schema.Literal('IMMEDIATE', 'DAILY', 'WEEKLY', 'MONTHLY');
+  const SellerStatus = Schema.Literals(['ACTIVE', 'INACTIVE', 'BANNED', 'PENDING']);
+  const PayoutSchedule = Schema.Literals(['IMMEDIATE', 'DAILY', 'WEEKLY', 'MONTHLY']);
 
   // Realistic seller schema with 27 fields (matching production schema)
   const Seller = Schema.Struct({
