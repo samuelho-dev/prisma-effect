@@ -1,5 +1,5 @@
-import { readFile, readdir, rm, rmdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, stat } from 'node:fs/promises';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 
 import { EffectGenerator } from '../effect/generator.js';
 import { KyselyGenerator } from '../kysely/generator.js';
@@ -163,44 +163,110 @@ function errorCode(error: unknown): string | undefined {
   return error instanceof Error && 'code' in error ? String(error.code) : undefined;
 }
 
-async function removeGeneratedFiles(directory: string): Promise<boolean> {
+const GENERATED_FILE_NAMES = new Set(['types.ts', 'enums.ts', 'index.ts']);
+
+async function pathExists(path: string): Promise<boolean> {
   try {
-    if (!(await readFile(join(directory, 'types.ts'), 'utf8')).includes('DO NOT EDIT MANUALLY')) {
-      return false;
-    }
+    await stat(path);
+    return true;
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return false;
     throw error;
   }
-
-  await Promise.all(
-    ['types.ts', 'enums.ts', 'index.ts'].map((file) => rm(join(directory, file), { force: true }))
-  );
-  return true;
 }
 
-async function removeObsoleteNamespaceOutput(
-  output: string,
-  namespaceIds: ReadonlySet<string>
-): Promise<void> {
+async function generatedFilesIn(directory: string, prefix = ''): Promise<string[]> {
+  try {
+    if (!(await readFile(join(directory, 'types.ts'), 'utf8')).includes('DO NOT EDIT MANUALLY')) {
+      return [];
+    }
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return [];
+    throw error;
+  }
+
+  return (await readdir(directory, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && GENERATED_FILE_NAMES.has(entry.name))
+    .map((entry) => join(prefix, entry.name));
+}
+
+async function collectGeneratedFiles(output: string): Promise<string[]> {
+  const files = await generatedFilesIn(output);
   let entries;
   try {
     entries = await readdir(output, { withFileTypes: true });
   } catch (error) {
-    if (errorCode(error) === 'ENOENT') return;
+    if (errorCode(error) === 'ENOENT') return files;
     throw error;
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || namespaceIds.has(entry.name)) continue;
-    const directory = join(output, entry.name);
-    if (!(await removeGeneratedFiles(directory))) continue;
-    try {
-      await rmdir(directory);
-    } catch (error) {
-      if (errorCode(error) !== 'ENOTEMPTY') throw error;
+    if (entry.isDirectory()) {
+      files.push(...(await generatedFilesIn(join(output, entry.name), entry.name)));
     }
   }
+  return files;
+}
+
+async function installGeneratedOutput(
+  staging: string,
+  output: string,
+  stagedFiles: readonly string[]
+): Promise<string[]> {
+  const expected = stagedFiles.map((file) => relative(staging, file));
+  const existing = new Set(await collectGeneratedFiles(output));
+  for (const file of expected) {
+    if (await pathExists(join(output, file))) existing.add(file);
+  }
+
+  const backup = await mkdtemp(join(dirname(output), `.${basename(output)}-backup-`));
+  const backedUp: string[] = [];
+  const installed: string[] = [];
+  try {
+    for (const file of existing) {
+      await mkdir(dirname(join(backup, file)), { recursive: true });
+      await rename(join(output, file), join(backup, file));
+      backedUp.push(file);
+    }
+    for (const file of expected) {
+      await mkdir(dirname(join(output, file)), { recursive: true });
+      await rename(join(staging, file), join(output, file));
+      installed.push(file);
+    }
+  } catch (error) {
+    try {
+      await Promise.all(installed.map((file) => rm(join(output, file), { force: true })));
+      for (const file of backedUp.reverse()) {
+        await mkdir(dirname(join(output, file)), { recursive: true });
+        await rename(join(backup, file), join(output, file));
+      }
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        `Generated output installation and rollback failed; backup retained at ${backup}`,
+        { cause: rollbackError }
+      );
+    }
+    await rm(backup, { recursive: true, force: true });
+    throw error;
+  }
+  await rm(backup, { recursive: true, force: true });
+
+  const expectedSet = new Set(expected);
+  const obsoleteDirectories = new Set(
+    [...existing]
+      .filter((file) => !expectedSet.has(file))
+      .map((file) => dirname(file))
+      .filter((directory) => directory !== '.')
+  );
+  for (const directory of obsoleteDirectories) {
+    try {
+      await rmdir(join(output, directory));
+    } catch (error) {
+      if (!['ENOENT', 'ENOTEMPTY'].includes(errorCode(error) ?? '')) throw error;
+    }
+  }
+  return expected;
 }
 
 function assertNoCrossNamespaceCycles(modelSet: ContractModelSet): void {
@@ -310,44 +376,51 @@ export async function generate(options: GenerateOptions): Promise<{ files: strin
   if (options.multiDomain) assertSafeNamespaceIds(namespaceIds);
   const modelSet = buildModelSet(contract, options.multiDomain ?? false);
   const overrides = await readOverrides(options);
-  let files: string[];
+  if (options.multiDomain) assertNoCrossNamespaceCycles(modelSet);
 
-  if (!options.multiDomain) {
-    const imports = new Map<string, string[]>();
-    if (modelSet.enums.length > 0) {
-      imports.set(
-        './enums.js',
-        modelSet.enums.map((enumModel) => enumModel.schemaName)
-      );
+  const output = resolve(options.output);
+  await mkdir(dirname(output), { recursive: true });
+  const staging = await mkdtemp(join(dirname(output), `.${basename(output)}-staging-`));
+  let stagedFiles: string[] = [];
+
+  try {
+    if (!options.multiDomain) {
+      const imports = new Map<string, string[]>();
+      if (modelSet.enums.length > 0) {
+        imports.set(
+          './enums.js',
+          modelSet.enums.map((enumModel) => enumModel.schemaName)
+        );
+      }
+      stagedFiles = await writeGeneratedOutput(staging, modelSet, imports, new Map(), overrides);
+    } else {
+      for (const namespaceId of namespaceIds) {
+        const namespaceSet: ContractModelSet = {
+          models: modelSet.models.filter((model) => model.namespaceId === namespaceId),
+          enums: modelSet.enums.filter((enumModel) => enumModel.namespaceId === namespaceId),
+          valueObjects: modelSet.valueObjects.filter(
+            (valueObject) => valueObject.namespaceId === namespaceId
+          ),
+        };
+        const references = collectNamespaceReferences(namespaceId, modelSet);
+        stagedFiles.push(
+          ...(await writeGeneratedOutput(
+            join(staging, namespaceId),
+            namespaceSet,
+            references.imports,
+            references.fields,
+            overrides
+          ))
+        );
+      }
     }
-    files = await writeGeneratedOutput(options.output, modelSet, imports, new Map(), overrides);
-    await removeObsoleteNamespaceOutput(options.output, new Set());
-  } else {
-    assertNoCrossNamespaceCycles(modelSet);
-    files = [];
-    for (const namespaceId of namespaceIds) {
-      const namespaceSet: ContractModelSet = {
-        models: modelSet.models.filter((model) => model.namespaceId === namespaceId),
-        enums: modelSet.enums.filter((enumModel) => enumModel.namespaceId === namespaceId),
-        valueObjects: modelSet.valueObjects.filter(
-          (valueObject) => valueObject.namespaceId === namespaceId
-        ),
-      };
-      const references = collectNamespaceReferences(namespaceId, modelSet);
-      files.push(
-        ...(await writeGeneratedOutput(
-          join(options.output, namespaceId),
-          namespaceSet,
-          references.imports,
-          references.fields,
-          overrides
-        ))
-      );
-    }
-    await removeGeneratedFiles(options.output);
-    await removeObsoleteNamespaceOutput(options.output, new Set(namespaceIds));
+
+    const files = (await installGeneratedOutput(staging, output, stagedFiles)).map((file) =>
+      join(options.output, file)
+    );
+    console.log(`prisma-effect-kysely: wrote ${files.length} files to ${options.output}`);
+    return { files };
+  } finally {
+    await rm(staging, { recursive: true, force: true });
   }
-
-  console.log(`prisma-effect-kysely: wrote ${files.length} files to ${options.output}`);
-  return { files };
 }

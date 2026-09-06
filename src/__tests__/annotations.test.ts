@@ -58,6 +58,14 @@ describe('parseCustomTypeAnnotations', () => {
   it('tracks namespaces and ignores annotation syntax inside literals', () => {
     const source = `
       namespace audit {
+        enum Kind {
+          A
+        }
+
+        type Metadata {
+          note String
+        }
+
         model AuditEntry {
           /// @customType(Schema.Literal(")"))
           value String

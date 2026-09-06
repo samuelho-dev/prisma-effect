@@ -81,6 +81,40 @@ export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
   let modelNamespaceId: string | null = null;
   let fields: Array<[name: string, customType: string]> = [];
   let docs: string[] = [];
+  let namespaceDepth = 0;
+  let inNamespaceBlockComment = false;
+
+  const namespaceBraceDelta = (line: string): number => {
+    let delta = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < line.length; index++) {
+      const character = line[index];
+      const next = line[index + 1];
+      if (inNamespaceBlockComment) {
+        if (character === '*' && next === '/') {
+          inNamespaceBlockComment = false;
+          index++;
+        }
+      } else if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') quoted = false;
+      } else if (character === '/' && next === '/') {
+        break;
+      } else if (character === '/' && next === '*') {
+        inNamespaceBlockComment = true;
+        index++;
+      } else if (character === '"') {
+        quoted = true;
+      } else if (character === '{') {
+        delta++;
+      } else if (character === '}') {
+        delta--;
+      }
+    }
+    return delta;
+  };
 
   const finishModel = (): void => {
     if (!modelName) return;
@@ -97,19 +131,28 @@ export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
 
   for (const line of psl.split(/\r?\n/)) {
     if (!modelName) {
-      const namespace = /^\s*namespace\s+([A-Za-z_]\w*)\s*\{/.exec(line);
-      if (namespace?.[1]) {
-        enclosingNamespaceId = namespace[1];
-        continue;
+      if (!enclosingNamespaceId) {
+        const namespace = /^\s*namespace\s+([A-Za-z_]\w*)\s*\{/.exec(line);
+        if (namespace?.[1]) {
+          enclosingNamespaceId = namespace[1];
+          namespaceDepth = 1;
+          continue;
+        }
       }
-      if (enclosingNamespaceId && /^\s*}/.test(line)) {
-        enclosingNamespaceId = null;
-        continue;
-      }
-      const model = /^\s*model\s+([A-Za-z_]\w*)\s*\{/.exec(line);
+
+      const model =
+        !enclosingNamespaceId || namespaceDepth === 1
+          ? /^\s*model\s+([A-Za-z_]\w*)\s*\{/.exec(line)
+          : null;
       if (model?.[1]) {
         modelName = model[1];
         modelNamespaceId = enclosingNamespaceId;
+        continue;
+      }
+
+      if (enclosingNamespaceId) {
+        namespaceDepth += namespaceBraceDelta(line);
+        if (namespaceDepth === 0) enclosingNamespaceId = null;
       }
       continue;
     }

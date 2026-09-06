@@ -189,6 +189,7 @@ describe('multi-domain contract generation', () => {
       generate({ contract, output: regenerationOutput, multiDomain: true })
     ).rejects.toThrow('Value object A forms a reference cycle');
     expect(existsSync(join(regenerationOutput, 'audit/types.ts'))).toBe(true);
+    expect(existsSync(join(regenerationOutput, 'public/enums.ts'))).toBe(true);
 
     await writeFile(contract, JSON.stringify(makeContract({ namespaces: { public: {} } })));
     await generate({ contract, output: regenerationOutput, multiDomain: true });
