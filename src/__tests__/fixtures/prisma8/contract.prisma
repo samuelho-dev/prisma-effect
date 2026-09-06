@@ -1,0 +1,178 @@
+// use prisma-next
+
+type Address {
+  street String
+  city   String
+  zip    String?
+}
+
+enum Role {
+  @@type("pg/text@1")
+  ADMIN
+  GUEST
+  USER
+}
+
+enum Status {
+  @@type("pg/text@1")
+  ACTIVE   = "active"
+  INACTIVE = "inactive"
+  PENDING  = "pending"
+}
+
+model AllTypes {
+  id               Uuid      @id @default(uuid())
+  stringField      String
+  optionalString   String?
+  stringArray      String[]
+  intField         Int
+  optionalInt      Int?
+  intArray         Int[]
+  floatField       Float
+  optionalFloat    Float?
+  floatArray       Float[]
+  bigIntField      BigInt
+  optionalBigInt   BigInt?
+  bigIntArray      BigInt[]
+  decimalField     Decimal
+  optionalDecimal  Decimal?
+  decimalArray     Decimal[]
+  booleanField     Boolean
+  optionalBoolean  Boolean?
+  booleanArray     Boolean[]
+  dateTimeField    DateTime
+  optionalDateTime DateTime?
+  dateTimeArray    DateTime[]
+  jsonField        Json
+  optionalJson     Json?
+  jsonArray        Json[]
+  bytesField       Bytes
+  optionalBytes    Bytes?
+  bytesArray       Bytes[]
+  role             Role
+  optionalRole     Role?
+  status           Status    @default(ACTIVE)
+  address          Address?
+  mappedField      String    @map("db_mapped_field")
+  mappedDefault    Int       @default(0) @map("mapped_default")
+  language         String    @default("en")
+  createdAt        DateTime  @default(now())
+  updatedAt        temporal.updatedAt()
+
+  @@map("all_types")
+}
+
+model User {
+  id      Uuid     @id @default(uuid())
+  email   String   @unique
+  profile Profile?
+  posts   Post[]
+
+  @@map("user")
+}
+
+model Profile {
+  id     Uuid   @id @default(uuid())
+  bio    String?
+  userId Uuid   @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("profile")
+}
+
+model Post {
+  id        Uuid      @id @default(uuid())
+  title     String
+  content   String?
+  published Boolean   @default(false)
+  authorId  Uuid
+  author    User      @relation(fields: [authorId], references: [id])
+  tags      PostTag[]
+
+  @@map("post")
+}
+
+model Tag {
+  id    Uuid      @id @default(uuid())
+  label String    @unique
+  posts PostTag[]
+
+  @@map("tag")
+}
+
+model PostTag {
+  postId Uuid
+  tagId  Uuid
+  post   Post @relation(fields: [postId], references: [id])
+  tag    Tag  @relation(fields: [tagId], references: [id])
+
+  @@id([postId, tagId])
+  @@map("post_tag")
+}
+
+model Employee {
+  id        Uuid       @id @default(uuid())
+  name      String
+  managerId Uuid?
+  manager   Employee?  @relation("EmployeeManager", fields: [managerId], references: [id])
+  reports   Employee[] @relation("EmployeeManager")
+
+  @@map("employee")
+}
+
+model AnnotationTest {
+  id Uuid @id @default(uuid())
+
+  /// @customType(Schema.String.check(Schema.isMinLength(3)))
+  email String
+
+  /// @customType(Schema.Number.check(Schema.isGreaterThan(0)))
+  age Int
+
+  /// @customType(Schema.Array(Schema.Number).check(Schema.isLengthBetween(3, 3)))
+  coordinates Int[]
+
+  // @customType(Schema.Never)
+  ignored String
+
+  /// @customType(Schema.Never)
+  @@map("annotation_test")
+}
+
+model Todo {
+  id        Int     @id @default(autoincrement())
+  title     String
+  completed Boolean @default(false)
+
+  @@map("todo")
+}
+
+model Country {
+  code String @id
+  name String
+
+  @@map("country")
+}
+
+model Task {
+  id    Uuid   @id @default(uuid())
+  title String
+  type  String
+
+  @@discriminator(type)
+  @@map("task")
+}
+
+model Bug {
+  severity String
+
+  @@base(Task, "bug")
+  @@map("bug")
+}
+
+model session_model_preference {
+  id    Uuid   @id @default(uuid())
+  value String?
+
+  @@map("session_preferences")
+}

@@ -1,74 +1,65 @@
-import type { DMMF } from '@prisma/generator-helper';
-
 /**
- * @customType Annotation Parser
- *
- * Allows overriding Effect Schema types for Prisma-supported fields.
- *
- * WORKS FOR: Prisma scalar types (String, Int, Boolean, DateTime, etc.)
- *
- * USE CASES (Effect 4 syntax — emitted verbatim, so must be v4-valid):
- *   // Length constraint for String field
- *   /// @customType(Schema.String.check(Schema.isMinLength(3)))
- *   email String
- *
- *   // Positive number constraint for Int field
- *   /// @customType(Schema.Number.check(Schema.isGreaterThan(0)))
- *   age Int
- *
- *   // Custom branded type
- *   /// @customType(Schema.String.pipe(Schema.brand('UserId')))
- *   userId String
- *
- * @param field - Prisma DMMF field
- * @returns Extracted type string or null if no annotation found
+ * Extract a balanced `@customType(...)` expression from Prisma doc text.
  */
-export function extractEffectTypeOverride(field: DMMF.Field) {
-  if (!field.documentation) return null;
+export function extractCustomType(doc: string): string | null {
+  const match = /@customType\s*\(/.exec(doc);
+  if (!match || match.index === undefined) return null;
 
-  // Match @customType annotation - handle balanced parentheses
-  const annotationMatch = field.documentation.match(/@customType\s*\(/);
-  if (!annotationMatch) return null;
-
-  // Find the matching closing parenthesis
-  const startIdx = field.documentation.indexOf('@customType(') + '@customType('.length;
-  let parenCount = 1;
-  let endIdx = startIdx;
-
-  for (let i = startIdx; i < field.documentation.length && parenCount > 0; i++) {
-    if (field.documentation[i] === '(') parenCount++;
-    if (field.documentation[i] === ')') parenCount--;
-    if (parenCount === 0) {
-      endIdx = i;
-      break;
-    }
+  const start = match.index + match[0].length;
+  let depth = 1;
+  let end = start;
+  for (let index = start; index < doc.length && depth > 0; index++) {
+    if (doc[index] === '(') depth++;
+    if (doc[index] === ')') depth--;
+    if (depth === 0) end = index;
   }
+  if (depth !== 0) return null;
 
-  if (parenCount !== 0) {
-    return null;
-  }
-
-  const typeStr = field.documentation.substring(startIdx, endIdx).trim();
-
-  // Validate it's either a custom type or starts with Schema.
-  if (!(typeStr.startsWith('Schema.') || isCustomType(typeStr))) {
-    return null;
-  }
-
-  return typeStr;
+  const expression = doc.slice(start, end).trim();
+  return expression.startsWith('Schema.') || isCustomType(expression) ? expression : null;
 }
 
 /**
- * Check if type string is a custom type reference
- *
- * Custom types are PascalCase identifiers without dots:
- * - Valid: Vector1536, JSONBType, CustomEnum
- * - Invalid: Schema.String, some.nested.type
- *
- * @param typeStr - Type string to check
- * @returns true if it's a custom type reference
+ * Read model-field custom type annotations from a Prisma contract source.
  */
-function isCustomType(typeStr: string) {
+export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
+  const annotations = new Map<string, string>();
+  let modelName: string | null = null;
+  let docs: string[] = [];
+
+  for (const line of psl.split(/\r?\n/)) {
+    if (!modelName) {
+      const model = /^\s*model\s+([A-Za-z_]\w*)\s*\{/.exec(line);
+      if (model?.[1]) modelName = model[1];
+      continue;
+    }
+
+    if (/^\s*}\s*$/.test(line)) {
+      modelName = null;
+      docs = [];
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (trimmed.startsWith('///')) {
+      docs.push(trimmed.slice(3).trimStart());
+      continue;
+    }
+
+    if (!trimmed.startsWith('@@') && !trimmed.startsWith('//')) {
+      const field = /^\s*([A-Za-z_]\w*)\s+\S/.exec(line);
+      const customType = docs.length > 0 ? extractCustomType(docs.join('\n')) : null;
+      if (field?.[1] && customType) {
+        annotations.set(`${modelName}.${field[1]}`, customType);
+      }
+    }
+    docs = [];
+  }
+
+  return annotations;
+}
+
+function isCustomType(typeStr: string): boolean {
   return /^[A-Z][A-Za-z0-9]*$/.test(typeStr);
 }
 
@@ -213,14 +204,8 @@ export function detectLegacyEffectV3Syntax(typeStr: string): string[] {
 }
 
 /**
- * Check if field has any custom type annotations
- *
- * @param fields - Array of Prisma fields
- * @returns true if any field uses custom types in @effectType
+ * Check whether any annotation references an imported custom schema.
  */
-export function hasCustomTypeAnnotations(fields: readonly DMMF.Field[]) {
-  return fields.some((field) => {
-    const override = extractEffectTypeOverride(field);
-    return override && isCustomType(override);
-  });
+export function hasCustomTypeAnnotations(annotations: ReadonlyMap<string, string>): boolean {
+  return [...annotations.values()].some(isCustomType);
 }

@@ -46,28 +46,3 @@ export function toPascalCase(str: string, suffix?: string) {
 
   return suffix ? `${pascalCase}${suffix}` : pascalCase;
 }
-
-/**
- * Convert PascalCase or camelCase string to snake_case
- * Used for generating database column names from model names
- *
- * @param str - The string to convert
- *
- * @example
- * toSnakeCase('User') // 'user'
- * toSnakeCase('ProductTag') // 'product_tag'
- * toSnakeCase('ProductStatus') // 'product_status'
- */
-export function toSnakeCase(str: string) {
-  if (!str) return str;
-
-  return (
-    str
-      // Insert underscore before uppercase letters (except at start)
-      .replace(/([A-Z])/g, '_$1')
-      // Remove leading underscore if present
-      .replace(/^_/, '')
-      // Convert to lowercase
-      .toLowerCase()
-  );
-}

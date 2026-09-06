@@ -1,64 +1,45 @@
 # prisma-effect-kysely
 
-Prisma generator producing Effect Schema types with Kysely-compatible column metadata, branded IDs, and intelligent UUID detection.
+CLI and library for generating Effect Schema types with Kysely-compatible column metadata from Prisma 8 contracts.
 
 ## Install
 
-This package's major version tracks the major version of its `effect` peer
-dependency. Pick the line that matches your Effect version:
+Version 7 targets Prisma 8 contracts and Effect 4. Prisma 7 projects stay on
+the 6.x release line.
 
-| Your Effect version | Install                             | npm dist-tag |
-| ------------------- | ----------------------------------- | ------------ |
-| Effect 3 (stable)   | `bun add prisma-effect-kysely`      | `latest`     |
-| Effect 4 (beta)     | `bun add prisma-effect-kysely@next` | `next`       |
+| Prisma | Effect | Install                                         |
+| ------ | ------ | ----------------------------------------------- |
+| 8      | 4      | `bun add prisma-effect-kysely@next effect@beta` |
+| 7      | 4      | Pin the required `6.0.0-next.x` release         |
 
-```bash
-# Effect 3 (current stable line)
-bun add prisma-effect-kysely
+Version 7 has no runtime dependency on Prisma packages. Prisma is only needed
+by your application toolchain to emit `contract.json`.
 
-# Effect 4 beta — opt-in pre-release
-bun add prisma-effect-kysely@next effect@beta
-```
-
-> **Effect 4 support is a pre-release.** It requires `effect@^4.0.0-beta` and is
-> published under the `next` dist-tag, not `latest`. It is **tested against
-> `effect@4.0.0-beta.83`**; later betas may introduce breaking Schema changes. A
-> generator-output compile check (`bun run test:emit`) guards the emitted code
-> against the installed Effect, but pin `effect` if you need stability during the
-> beta. The `next` line will be promoted to `latest` when Effect 4 goes stable.
->
-> **Pin the exact version — do not use `"*"` or `"latest"`.** A `"prisma-effect-kysely": "*"`
-> (or any range) dependency resolves to the **stable** `5.x` line, NOT the
-> pre-release, because npm/pnpm semver excludes prereleases from ranges. In a
-> workspace, depend on `"6.0.0-next.x"` exactly (or add a `pnpm.overrides` /
-> `resolutions` entry). Symptom of getting this wrong: the v3 `5.x` types resolve
-> and consumers see cascading `Schema.Top` / `unknown` type errors.
->
-> Effect 4 and Effect 3 are not interchangeable: the generated output uses
-> Effect-4-only Schema APIs (`Schema.Date`, `Schema.String.check(Schema.isUUID())`,
-> `Schema.encodeKeys`, `Schema.Literals`, …). Stay on the `latest` line if you are on
-> Effect 3.
+> **Pin the exact prerelease version.** npm-compatible ranges exclude
+> prereleases, so a broad range can resolve to an older major.
 
 ## Setup
 
-```prisma
-generator effect_schemas {
-  provider = "prisma-effect-kysely"
-  output   = "./generated/effect"
-}
-```
+First emit Prisma 8's tool-facing contract, then run the generator CLI:
 
 ```bash
-npx prisma generate
+bunx prisma contract emit --config prisma.config.ts
+bunx prisma-effect-kysely \
+  --contract ./prisma/contract.json \
+  --source ./prisma/contract.prisma \
+  --output ./generated/effect
 ```
+
+`--source` is optional. When omitted, the CLI scans `contract.prisma` beside
+the contract when present. Use `--multi-domain` to emit one directory per
+contract namespace.
 
 ## Output
 
-Three files: `enums.ts`, `types.ts`, `index.ts`.
+Up to three files: `enums.ts` when enums exist, plus `types.ts` and `index.ts`.
 
 `enums.ts` emits Effect-v4 finite-set schemas. No TypeScript enum is generated;
-enum values are plain string literals, including values mapped with Prisma
-`@map`.
+enum values are the stored literals from the contract.
 
 ```typescript
 import { Schema } from 'effect';
@@ -81,7 +62,7 @@ export type UserId = typeof UserId.Type;
 
 // Kysely table schema: keeps columnType/generated wrappers
 export const UserTable = Schema.Struct({
-  id: columnType(UserId, Schema.Never, Schema.Never),
+  id: columnType(UserId, UserId, Schema.Never),
   email: Schema.String,
   role: Role,
   createdAt: generated(Schema.Date),
@@ -93,7 +74,7 @@ export type User = typeof User.Type;
 
 // Kysely DB interface
 export interface DB {
-  User: Schema.Schema.Type<typeof UserTable>;
+  user: Schema.Schema.Type<typeof UserTable>;
 }
 ```
 
@@ -126,10 +107,12 @@ Generated enum types are string literal unions; use `"ADMIN"` rather than
 
 ## Field Behavior
 
-- `@default` / `@updatedAt` → `generated()` (omitted from insert, optional in update)
-- `@id` with `@default` → `columnType(type, Never, Never)` (read-only)
+- Database defaults (`autoincrement()`, `now()`, and literals) → `generated()`
+- A single-column primary key with a database default → read-only on insert and update
+- A client-supplied or Prisma-applied primary key (for example `uuid()`) → insertable, immutable
 - Optional fields → `Schema.NullOr(type)`
-- Foreign keys → branded ID type from target model
+- Foreign keys → branded ID type from the target model
+- Explicit join models are emitted as ordinary tables; Prisma 8 has no implicit M2M tables
 
 ## Type Mappings
 
@@ -150,18 +133,9 @@ Arrays → `Schema.Array(t)`. Nullable → `Schema.NullOr(t)`.
 
 ## UUID Detection
 
-A column is treated as a UUID only when Prisma's type information says so:
-
-1. Native type: `@db.Uuid`
-2. Documentation: `@db.Uuid` in the field comment (`/// @db.Uuid`)
-
-UUID is a column type, not a naming convention — a bare `String` maps to `text`,
-so `@db.Uuid` always captures genuine UUID columns. Field-name inference
-(`*_id`, `*_uuid`, …) is intentionally NOT used: external identifiers such as
-Stripe IDs (`acct_…`, `cus_…`) are text but end in `_id`, and inferring UUID
-from the name produced false `Schema.isUUID()` checks that crashed at decode
-time. Mark a non-`@db.Uuid` column as a UUID explicitly via `/// @db.Uuid`, or
-override its schema entirely with `@customType(...)`.
+A column is a UUID when the contract codec is `pg/uuid@1`. Prisma 8 emits this
+for its native `Uuid` type. Names such as `userId` are never used to infer a
+UUID, so text identifiers such as Stripe `acct_…` values remain strings.
 
 ## Custom Type Overrides
 
@@ -179,8 +153,8 @@ model User {
 Supported on all Prisma scalar types.
 
 `@customType(...)` expressions are emitted **verbatim** — they must be valid
-Effect 4 syntax. The generator does not rewrite them, but it **warns** at
-`prisma generate` time when it detects Effect 3 syntax, pointing at the v4 form.
+Effect 4 syntax. The CLI does not rewrite them, but warns during generation
+when it detects Effect 3 syntax and points at the v4 form.
 Effect 4 moved all filters under `.check(Schema.is*)` and made the variadic
 combinators take an array:
 
@@ -194,28 +168,18 @@ combinators take an array:
 | `Schema.Literal('a', 'b')`            | `Schema.Literals(['a', 'b'])` (single `Schema.Literal('x')` unchanged) |
 | `Schema.UUID` / `Schema.DateFromSelf` | `Schema.String.check(Schema.isUUID())` / `Schema.Date`                 |
 
-## Implicit M2M Join Tables
+## Relations
 
-Prisma columns `A`/`B` map to semantic snake_case fields via `Schema.encodeKeys`:
-
-```typescript
-export const ProductToProductTag = Schema.Struct({
-  product_id: columnType(ProductId, ProductId, Schema.Never),
-  product_tag_id: columnType(ProductTagId, ProductTagId, Schema.Never),
-}).pipe(Schema.encodeKeys({ product_id: 'A', product_tag_id: 'B' }));
-```
-
-In the Kysely `DB` interface the join table is typed by its **encoded** shape
-(`Schema.Codec.Encoded<typeof ProductToProductTag>` → `{ A, B }`), so you query
-the physical columns directly: `db.selectFrom('_product_tags').where('_product_tags.A', '=', productId)`.
-`Schema.decode` of a raw row maps `A`/`B` back to `product_id`/`product_tag_id`.
+Foreign-key columns use the target model's branded ID. Explicit join models
+are emitted like every other contract table. Implicit Prisma M2M join tables
+are not supported because Prisma 8 contracts require explicit join models.
 
 ## Package Exports
 
 | Entry                            | Contents                                           |
 | -------------------------------- | -------------------------------------------------- |
-| `prisma-effect-kysely`           | Type utilities + runtime helpers (default import)  |
-| `prisma-effect-kysely/generator` | Prisma generator binary entry                      |
+| `prisma-effect-kysely`           | Type utilities + runtime helpers                   |
+| `prisma-effect-kysely/generator` | Programmatic `generate` API                        |
 | `prisma-effect-kysely/kysely`    | `columnType`, `generated`, `JsonValue`, type utils |
 | `prisma-effect-kysely/error`     | `NotFoundError`, `QueryError`, `DatabaseError`     |
 | `prisma-effect-kysely/runtime`   | All runtime utilities                              |

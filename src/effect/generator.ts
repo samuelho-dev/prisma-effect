@@ -1,138 +1,157 @@
-import type { DMMF } from '@prisma/generator-helper';
-import { buildKyselyFieldType, fieldKeyMapping } from '../kysely/type.js';
-import { buildForeignKeyMap, type JoinTableInfo } from '../prisma/relation.js';
-import { isUuidField } from '../prisma/type.js';
+import { applyKyselyHelpers } from '../kysely/type.js';
+import type {
+  ContractModelSet,
+  TableField,
+  TableModel,
+  ValueObjectModel,
+} from '../prisma/model.js';
 import { generateFileHeader } from '../utils/codegen.js';
 import { toPascalCase } from '../utils/naming.js';
 import { generateEnumsFile } from './enum.js';
-import { generateJoinTableSchema } from './join-table.js';
-import { buildFieldType } from './type.js';
+import { baseFieldType } from './type.js';
 
-/**
- * Effect domain generator - orchestrates Effect Schema generation
- */
 export class EffectGenerator {
-  constructor(private readonly dmmf: DMMF.Document) {}
+  constructor(private readonly modelSet: ContractModelSet) {}
 
-  /**
-   * Generate enums.ts file content
-   */
-  generateEnums(enums: readonly DMMF.DatamodelEnum[]) {
-    return generateEnumsFile(enums);
+  generateEnums(): string {
+    return generateEnumsFile(this.modelSet.enums);
   }
 
-  /**
-   * Generate branded ID schema for a model
-   * @returns The branded ID schema declaration + exported type, or null if no ID field
-   */
-  generateBrandedIdSchema(model: DMMF.Model, fields: readonly DMMF.Field[]) {
-    const idField = fields.find((f) => f.isId);
-    if (!idField) {
-      return null;
+  generateBrandedIdSchema(model: TableModel): string | null {
+    if (!model.brandedId) return null;
+
+    let baseType: string;
+    switch (model.brandedId.codecId) {
+      case 'pg/uuid@1':
+        baseType = 'Schema.String.check(Schema.isUUID())';
+        break;
+      case 'pg/int@1':
+      case 'pg/int2@1':
+      case 'pg/int4@1':
+      case 'pg/int8number@1':
+        baseType = 'Schema.Int';
+        break;
+      case 'pg/int8@1':
+      case 'pg/unboundedint@1':
+        baseType = 'Schema.BigInt';
+        break;
+      default:
+        baseType = 'Schema.String';
     }
 
-    const name = toPascalCase(model.name);
-    const baseType = this.getIdBaseType(idField);
-
-    // Export Id as both value and type with same name
-    return `export const ${name}Id = ${baseType}.pipe(Schema.brand("${name}Id"));
-export type ${name}Id = typeof ${name}Id.Type;`;
+    return `export const ${model.schemaName}Id = ${baseType}.pipe(Schema.brand("${model.schemaName}Id"));
+export type ${model.schemaName}Id = typeof ${model.schemaName}Id.Type;`;
   }
 
-  /**
-   * Determine the base Effect Schema type for an ID field.
-   * UUID strings → Schema.String.check(Schema.isUUID()), integers → Schema.Int,
-   * bigints → Schema.BigInt, all others → Schema.String
-   */
-  private getIdBaseType(field: DMMF.Field) {
-    if (isUuidField(field)) return 'Schema.String.check(Schema.isUUID())';
-    if (field.type === 'Int') return 'Schema.Int';
-    if (field.type === 'BigInt') return 'Schema.BigInt';
-    return 'Schema.String';
+  generateValueObjectSchema(
+    valueObject: ValueObjectModel,
+    references: ReadonlyMap<TableField, string>
+  ): string {
+    const fields = valueObject.fields
+      .map((field) => `  ${field.tsName}: ${baseFieldType(field, references.get(field) ?? null)}`)
+      .join(',\n');
+    return `export const ${valueObject.schemaName} = Schema.Struct({
+${fields}
+});
+export type ${valueObject.schemaName} = typeof ${valueObject.schemaName}.Type;`;
   }
 
-  /**
-   * Generate the main model schema.
-   *
-   * Emits TWO schemas per table (Kysely's `PersonTable` → `Person` convention):
-   * - `{Name}Table` — the wrapper-laden struct (columnType/generated intact).
-   *   Drives the Kysely `DB` interface; its ColumnType/Generated brands give
-   *   `.insertInto`/`.updateTable` their insert/update variance. NEVER a query
-   *   result type (Kysely's own rule).
-   * - `{Name}` — the bare SELECT row, `Selectable({Name}Table)` (wrappers
-   *   stripped). This is the composable value+type-merged schema contracts,
-   *   RPC outputs, and decode boundaries bind to. Derived ONCE here so no
-   *   consumer re-wraps `Selectable(...)`.
-   */
-  generateModelSchema(model: DMMF.Model, fields: readonly DMMF.Field[]) {
-    const fkMap = buildForeignKeyMap(model, this.dmmf.datamodel.models);
-    const name = toPascalCase(model.name);
-    const tableName = `${name}Table`;
+  generateValueObjectSchemas(references: ReadonlyMap<TableField, string>): string {
+    const byName = new Map(
+      this.modelSet.valueObjects.map((valueObject) => [valueObject.name, valueObject])
+    );
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const ordered: ValueObjectModel[] = [];
 
-    // Collect @map renames; they are applied once as a struct-level encodeKeys
-    // (Effect 4 removed the per-field Schema.fromKey pattern).
-    const keyMappings: Array<{ tsName: string; dbName: string }> = [];
+    const visit = (valueObject: ValueObjectModel): void => {
+      if (visited.has(valueObject.name)) return;
+      if (visiting.has(valueObject.name)) {
+        throw new Error(`Value object ${valueObject.name} forms a reference cycle`);
+      }
+      visiting.add(valueObject.name);
+      for (const field of valueObject.fields) {
+        const names =
+          field.kind.type === 'valueObject'
+            ? [field.kind.name]
+            : field.kind.type === 'union'
+              ? field.kind.members.flatMap((member) =>
+                  member.type === 'valueObject' ? [member.name] : []
+                )
+              : [];
+        for (const name of names) {
+          const dependency = byName.get(name);
+          if (dependency) visit(dependency);
+        }
+      }
+      visiting.delete(valueObject.name);
+      visited.add(valueObject.name);
+      ordered.push(valueObject);
+    };
 
-    const fieldDefinitions = fields
+    for (const valueObject of this.modelSet.valueObjects) visit(valueObject);
+    return ordered
+      .map((valueObject) => this.generateValueObjectSchema(valueObject, references))
+      .join('\n\n');
+  }
+
+  generateModelSchema(
+    model: TableModel,
+    overrides: ReadonlyMap<string, string>,
+    references: ReadonlyMap<TableField, string>
+  ): string {
+    const keyMappings: Array<{ tsName: string; column: string }> = [];
+    const hasSinglePrimaryKey = model.fields.filter((field) => field.isPrimaryKey).length === 1;
+    const fieldDefinitions = model.fields
       .map((field) => {
-        // Get base Effect type
-        const baseType = buildFieldType(field, this.dmmf, fkMap);
-        // Apply Kysely helpers (columnType, generated)
-        // Pass model.name so @id fields use the model's branded ID type
-        const fieldType = buildKyselyFieldType(baseType, field, model.name);
-
-        const mapping = fieldKeyMapping(field);
-        if (mapping) keyMappings.push(mapping);
-
-        return `  ${field.name}: ${fieldType}`;
+        const ownIdType =
+          model.brandedId?.column === field.column ? `${model.schemaName}Id` : undefined;
+        const referencedType = references.get(field);
+        const override =
+          overrides.get(`${model.name}.${field.tsName}`) ?? ownIdType ?? referencedType ?? null;
+        const baseType = baseFieldType(field, override);
+        const idType =
+          hasSinglePrimaryKey && field.isPrimaryKey
+            ? (ownIdType ??
+              (field.fkTarget
+                ? (referencedType ?? `${toPascalCase(field.fkTarget.model)}Id`)
+                : undefined))
+            : undefined;
+        const fieldType = applyKyselyHelpers(baseType, field, idType);
+        if (field.tsName !== field.column) {
+          keyMappings.push({ tsName: field.tsName, column: field.column });
+        }
+        return `  ${field.tsName}: ${fieldType}`;
       })
       .join(',\n');
 
     const encodeKeys =
-      keyMappings.length > 0
-        ? `.pipe(Schema.encodeKeys({ ${keyMappings
-            .map((m) => `${m.tsName}: "${m.dbName}"`)
-            .join(', ')} }))`
-        : '';
+      keyMappings.length === 0
+        ? ''
+        : `.pipe(Schema.encodeKeys({ ${keyMappings
+            .map(({ tsName, column }) => `${tsName}: "${column}"`)
+            .join(', ')} }))`;
 
-    return `export const ${tableName} = Schema.Struct({
+    return `export const ${model.schemaName}Table = Schema.Struct({
 ${fieldDefinitions}
 })${encodeKeys};
-export const ${name} = Selectable(${tableName});
-export type ${name} = typeof ${name}.Type;`;
+export const ${model.schemaName} = Selectable(${model.schemaName}Table);
+export type ${model.schemaName} = typeof ${model.schemaName}.Type;`;
   }
 
-  /**
-   * Generate types.ts file header
-   */
-  generateTypesHeader(hasEnums: boolean) {
-    const header = generateFileHeader();
+  generateTypesHeader(imports: ReadonlyMap<string, readonly string[]>): string {
+    const importLines = [...imports.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([specifier, names]) =>
+          `import { ${[...new Set(names)].sort().join(', ')} } from "${specifier}";`
+      );
 
-    // Import runtime helpers from prisma-effect-kysely.
-    // columnType/generated wrap the *Table struct fields (Kysely variance);
-    // Selectable strips them to produce the bare SELECT row schema.
-    const imports = [
-      `import { Schema } from "effect";`,
-      `import { columnType, generated, JsonValue, Selectable } from "prisma-effect-kysely";`,
-    ];
+    return `${generateFileHeader()}
 
-    if (hasEnums) {
-      // Import PascalCase enum schemas
-      const enumImports = this.dmmf.datamodel.enums.map((e) => toPascalCase(e.name)).join(', ');
-
-      // Emit a `.js` extension so the generated file resolves under NodeNext / verbatimModuleSyntax
-      // (TS2835). Bundler/Node16 resolution also accept the explicit extension, so this is strictly
-      // more compatible than the bare specifier.
-      imports.push(`import { ${enumImports} } from "./enums.js";`);
-    }
-
-    return `${header}\n\n${imports.join('\n')}`;
-  }
-
-  /**
-   * Generate schemas for all join tables
-   */
-  generateJoinTableSchemas(joinTables: readonly JoinTableInfo[]) {
-    return joinTables.map((jt) => generateJoinTableSchema(jt, this.dmmf)).join('\n\n');
+import { Schema } from "effect";
+import { columnType, generated, JsonValue, Selectable } from "prisma-effect-kysely";${
+      importLines.length > 0 ? `\n${importLines.join('\n')}` : ''
+    }`;
   }
 }

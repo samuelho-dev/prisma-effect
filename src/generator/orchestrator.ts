@@ -1,287 +1,297 @@
-import type { GeneratorOptions } from '@prisma/generator-helper';
+import { readFile, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+
 import { EffectGenerator } from '../effect/generator.js';
 import { KyselyGenerator } from '../kysely/generator.js';
-import { PrismaGenerator } from '../prisma/generator.js';
-import { detectLegacyEffectV3Syntax, extractEffectTypeOverride } from '../utils/annotations.js';
+import { readContract } from '../prisma/contract.js';
+import { buildModelSet, type ContractModelSet, type TableField } from '../prisma/model.js';
+import { detectLegacyEffectV3Syntax, parseCustomTypeAnnotations } from '../utils/annotations.js';
 import { FileManager } from '../utils/file-manager.js';
-import {
-  type GeneratorConfig,
-  isMultiDomainEnabled,
-  isScaffoldingEnabled,
-  parseGeneratorConfig,
-} from './config.js';
-import { logScaffoldResults, scaffoldContractLibraries } from './contract-scaffolder.js';
-import { type DomainInfo, detectDomains } from './domain-detector.js';
+import { toPascalCase } from '../utils/naming.js';
 
-/**
- * Orchestrates the generation of Effect Schema types from Prisma schema
- * Uses domain-driven generators: Prisma → Effect → Kysely
- *
- * Supports two modes:
- * 1. Single output (default): All schemas in one directory
- * 2. Multi-domain: Separate contract libraries per domain
- */
-export class GeneratorOrchestrator {
-  private readonly config: GeneratorConfig;
-  private readonly fileManager: FileManager;
-  private readonly prismaGen: PrismaGenerator;
-  private readonly effectGen: EffectGenerator;
-  private readonly kyselyGen: KyselyGenerator;
+export interface GenerateOptions {
+  contract: string;
+  output: string;
+  source?: string;
+  multiDomain?: boolean;
+}
 
-  constructor(options: GeneratorOptions) {
-    this.config = parseGeneratorConfig(options);
-
-    this.fileManager = new FileManager(this.config.output);
-    this.prismaGen = new PrismaGenerator(options.dmmf);
-    this.effectGen = new EffectGenerator(options.dmmf);
-    this.kyselyGen = new KyselyGenerator(options.dmmf);
+function addImport(imports: Map<string, string[]>, specifier: string, name: string): void {
+  const names = imports.get(specifier);
+  if (names) {
+    names.push(name);
+  } else {
+    imports.set(specifier, [name]);
   }
+}
 
-  /**
-   * Main generation entry point
-   * Orchestrates all generation steps
-   *
-   * Flow:
-   * 1. Detect domains if multi-domain mode enabled
-   * 2. Scaffold contract libraries if scaffolding enabled
-   * 3. Generate schemas (single or per-domain)
-   */
-  async generate(options: GeneratorOptions) {
-    this.logStart(options);
-    this.warnLegacyAnnotations(options);
+function bindImport(
+  imports: Map<string, string[]>,
+  bindings: Map<string, string>,
+  usedNames: Set<string>,
+  specifier: string,
+  targetNamespace: string,
+  importedName: string
+): string {
+  const key = `${specifier}\0${importedName}`;
+  const existing = bindings.get(key);
+  if (existing) return existing;
 
-    // Check if multi-domain mode is enabled
-    if (isMultiDomainEnabled(this.config)) {
-      await this.generateMultiDomain(options);
-    } else {
-      await this.generateSingleOutput();
-    }
-
-    this.logComplete();
-  }
-
-  /**
-   * Generate schemas in single-output mode (default)
-   * All schemas in one directory
-   */
-  private async generateSingleOutput() {
-    // Ensure output directory exists
-    await this.fileManager.ensureDirectory();
-
-    // Generate all files in parallel for better performance
-    await Promise.all([this.generateEnums(), this.generateTypes(), this.generateIndex()]);
-  }
-
-  /**
-   * Generate schemas in multi-domain mode
-   * Separate contract libraries per domain
-   */
-  private async generateMultiDomain(options: GeneratorOptions) {
-    // 1. Detect domains from schema structure
-    const schemaPath = options.schemaPath;
-    const domains = detectDomains(options.dmmf, schemaPath);
-
-    // 2. Scaffold contract libraries if enabled
-    if (isScaffoldingEnabled(this.config)) {
-      const scaffoldResults = await scaffoldContractLibraries(domains, this.config);
-      logScaffoldResults(scaffoldResults);
-    }
-
-    // 3. Generate schemas for each domain
-    for (const domain of domains) {
-      await this.generateForDomain(domain);
+  let localName = importedName;
+  if (usedNames.has(localName)) {
+    const base = `${toPascalCase(targetNamespace)}${importedName}`;
+    localName = base;
+    let suffix = 2;
+    while (usedNames.has(localName)) {
+      localName = `${base}${suffix}`;
+      suffix++;
     }
   }
 
-  /**
-   * Generate schemas for a specific domain
-   */
-  private async generateForDomain(domain: DomainInfo) {
-    const domainOutputPath = `${this.config.output}/${domain.name}/src/generated`;
-    const domainFileManager = new FileManager(domainOutputPath);
+  usedNames.add(localName);
+  bindings.set(key, localName);
+  addImport(
+    imports,
+    specifier,
+    localName === importedName ? importedName : `${importedName} as ${localName}`
+  );
+  return localName;
+}
 
-    await domainFileManager.ensureDirectory();
-
-    // Generate enums (shared across all domains for now)
-    const enums = this.prismaGen.getEnums();
-    if (enums.length > 0) {
-      const enumsContent = this.effectGen.generateEnums(enums);
-      await domainFileManager.writeFile('enums.ts', enumsContent);
+function warnLegacyAnnotations(overrides: ReadonlyMap<string, string>): void {
+  const warnings: string[] = [];
+  for (const [field, override] of overrides) {
+    for (const hint of detectLegacyEffectV3Syntax(override)) {
+      warnings.push(`  ${field}: ${hint}`);
     }
-
-    // Generate types for this domain's models only
-    const joinTables = this.prismaGen.getManyToManyJoinTables();
-    const hasEnums = enums.length > 0;
-
-    // Filter join tables to only those relevant to this domain
-    const domainJoinTables = joinTables.filter((jt) =>
-      domain.models.some((m) => m.name === jt.modelA || m.name === jt.modelB)
+  }
+  if (warnings.length > 0) {
+    console.warn(
+      `[prisma-effect-kysely] @customType annotations use Effect 3 syntax that does not ` +
+        `compile against Effect 4. Update them in your Prisma schema:\n${warnings.join('\n')}`
     );
+  }
+}
 
-    // Generate header with imports
-    const header = this.effectGen.generateTypesHeader(hasEnums);
-
-    // PHASE 1: Generate ALL branded ID schemas first (before any model structs)
-    const allBrandedIdSchemas = domain.models
-      .map((model) => {
-        const fields = this.prismaGen.getModelFields(model);
-        return this.effectGen.generateBrandedIdSchema(model, fields);
-      })
-      .filter((schema): schema is string => schema !== null)
-      .join('\n\n');
-
-    // PHASE 2: Generate model schemas (just User = Schema.Struct({...}))
-    const modelSchemas = domain.models
-      .map((model) => {
-        const fields = this.prismaGen.getModelFields(model);
-        return this.effectGen.generateModelSchema(model, fields);
-      })
-      .join('\n\n');
-
-    // Generate join table schemas for this domain
-    const joinTableSchemas =
-      domainJoinTables.length > 0 ? this.effectGen.generateJoinTableSchemas(domainJoinTables) : '';
-
-    // Generate DB interface for this domain (uses Selectable<Model> pattern)
-    const dbInterface = this.kyselyGen.generateDBInterface(domain.models, domainJoinTables);
-
-    // Assemble content with proper spacing
-    let content = `${header}`;
-    if (allBrandedIdSchemas) {
-      content += `\n\n// ===== Branded ID Schemas =====\n${allBrandedIdSchemas}`;
+async function readOverrides(options: GenerateOptions): Promise<Map<string, string>> {
+  const sourcePath = options.source ?? join(dirname(options.contract), 'contract.prisma');
+  try {
+    const overrides = parseCustomTypeAnnotations(await readFile(sourcePath, 'utf8'));
+    warnLegacyAnnotations(overrides);
+    return overrides;
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      if (options.source !== undefined) {
+        throw new Error(`Contract source not found at ${sourcePath}`, { cause: error });
+      }
+      return new Map();
     }
-    content += `\n\n// ===== Model Schemas =====\n${modelSchemas}`;
-    if (joinTableSchemas) {
-      content += `\n\n${joinTableSchemas}`;
-    }
-    content += `\n\n${dbInterface}`;
+    throw error;
+  }
+}
 
-    await domainFileManager.writeFile('types.ts', content);
+async function writeGeneratedOutput(
+  output: string,
+  modelSet: ContractModelSet,
+  imports: ReadonlyMap<string, readonly string[]>,
+  references: ReadonlyMap<TableField, string>,
+  overrides: ReadonlyMap<string, string>
+): Promise<string[]> {
+  const fileManager = new FileManager(output);
+  const effectGenerator = new EffectGenerator(modelSet);
+  const kyselyGenerator = new KyselyGenerator();
+  const files: string[] = [];
+  await fileManager.ensureDirectory();
 
-    // Generate index file
-    const indexContent = this.kyselyGen.generateIndexFile();
-    await domainFileManager.writeFile('index.ts', indexContent);
+  if (modelSet.enums.length > 0) {
+    await fileManager.writeFile('enums.ts', effectGenerator.generateEnums());
+    files.push(join(output, 'enums.ts'));
+  } else {
+    await rm(join(output, 'enums.ts'), { force: true });
   }
 
-  /**
-   * Generate enums.ts file
-   */
-  private async generateEnums() {
-    const enums = this.prismaGen.getEnums();
-    const content = this.effectGen.generateEnums(enums);
-    await this.fileManager.writeFile('enums.ts', content);
+  let types = effectGenerator.generateTypesHeader(imports);
+  const brandedIds = modelSet.models
+    .map((model) => effectGenerator.generateBrandedIdSchema(model))
+    .filter((schema): schema is string => schema !== null)
+    .join('\n\n');
+  if (brandedIds) {
+    types += `\n\n// ===== Branded ID Schemas =====\n${brandedIds}`;
   }
 
-  /**
-   * Generate types.ts file
-   */
-  private async generateTypes() {
-    const models = this.prismaGen.getModels();
-    const joinTables = this.prismaGen.getManyToManyJoinTables();
-    const hasEnums = this.prismaGen.getEnums().length > 0;
+  const valueObjects = effectGenerator.generateValueObjectSchemas(references);
+  if (valueObjects) {
+    types += `\n\n// ===== Value Object Schemas =====\n${valueObjects}`;
+  }
 
-    // Generate header with imports
-    const header = this.effectGen.generateTypesHeader(hasEnums);
+  const modelSchemas = modelSet.models
+    .map((model) => effectGenerator.generateModelSchema(model, overrides, references))
+    .join('\n\n');
+  types += `\n\n// ===== Model Schemas =====\n${modelSchemas}`;
+  types += `\n\n${kyselyGenerator.generateDBInterface(modelSet.models)}`;
+  await fileManager.writeFile('types.ts', types);
+  files.push(join(output, 'types.ts'));
 
-    // PHASE 1: Generate ALL branded ID schemas first (before any model structs)
-    // This ensures FK references can find their target ID schemas
-    const allBrandedIdSchemas = models
-      .map((model) => {
-        const fields = this.prismaGen.getModelFields(model);
-        return this.effectGen.generateBrandedIdSchema(model, fields);
-      })
-      .filter((schema): schema is string => schema !== null)
-      .join('\n\n');
+  await fileManager.writeFile(
+    'index.ts',
+    kyselyGenerator.generateIndexFile(modelSet.enums.length > 0)
+  );
+  files.push(join(output, 'index.ts'));
+  return files;
+}
 
-    // PHASE 2: Generate model schemas (just User = Schema.Struct({...}))
-    // Package's type utilities derive Insertable<User>, Selectable<User>
-    const modelSchemas = models
-      .map((model) => {
-        const fields = this.prismaGen.getModelFields(model);
-        return this.effectGen.generateModelSchema(model, fields);
-      })
-      .join('\n\n');
-
-    // Generate join table schemas
-    const joinTableSchemas =
-      joinTables.length > 0 ? this.effectGen.generateJoinTableSchemas(joinTables) : '';
-
-    // Generate DB interface with join tables (uses Selectable<Model> pattern)
-    const dbInterface = this.kyselyGen.generateDBInterface(models, joinTables);
-
-    // Assemble content with proper spacing
-    // Order: header → branded ID schemas → model schemas → join tables → DB interface
-    let content = `${header}`;
-    if (allBrandedIdSchemas) {
-      content += `\n\n// ===== Branded ID Schemas =====\n${allBrandedIdSchemas}`;
+function assertSafeNamespaceIds(namespaceIds: readonly string[]): void {
+  for (const namespaceId of namespaceIds) {
+    if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(namespaceId)) {
+      throw new Error(
+        `Contract namespace ${JSON.stringify(namespaceId)} is not a safe output directory name`
+      );
     }
-    content += `\n\n// ===== Model Schemas =====\n${modelSchemas}`;
-    if (joinTableSchemas) {
-      content += `\n\n${joinTableSchemas}`;
-    }
-    content += `\n\n${dbInterface}`;
-
-    await this.fileManager.writeFile('types.ts', content);
   }
+}
 
-  /**
-   * Generate index.ts file
-   */
-  private async generateIndex() {
-    const content = this.kyselyGen.generateIndexFile();
-    await this.fileManager.writeFile('index.ts', content);
-  }
-
-  /**
-   * Log generation start with stats
-   */
-  private logStart(options: GeneratorOptions) {
-    const _modelCount = options.dmmf.datamodel.models.filter((m) => !m.name.startsWith('_')).length;
-    const _enumCount = options.dmmf.datamodel.enums.length;
-
-    if (isMultiDomainEnabled(this.config)) {
-      if (isScaffoldingEnabled(this.config)) {
-        // Scaffolding logic would go here if needed
+function assertNoCrossNamespaceCycles(modelSet: ContractModelSet): void {
+  const graph = new Map<string, Set<string>>();
+  for (const model of modelSet.models) {
+    const targets = graph.get(model.namespaceId) ?? new Set<string>();
+    graph.set(model.namespaceId, targets);
+    for (const field of model.fields) {
+      if (field.fkTarget && field.fkTarget.namespaceId !== model.namespaceId) {
+        targets.add(field.fkTarget.namespaceId);
       }
     }
   }
 
-  /**
-   * Scan every field's `@customType(...)` annotation for Effect 3 syntax and warn
-   * (to stderr, which Prisma surfaces to the user). `@customType` strings are
-   * emitted verbatim, so a v3 expression silently breaks once compiled against
-   * Effect 4. We never rewrite — only point at the v4 replacement.
-   */
-  private warnLegacyAnnotations(options: GeneratorOptions) {
-    const warnings: string[] = [];
-    for (const model of options.dmmf.datamodel.models) {
-      for (const field of model.fields) {
-        const override = extractEffectTypeOverride(field);
-        if (!override) continue;
-        for (const hint of detectLegacyEffectV3Syntax(override)) {
-          warnings.push(`  ${model.name}.${field.name}: ${hint}`);
-        }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (namespaceId: string): void => {
+    if (visited.has(namespaceId)) return;
+    visiting.add(namespaceId);
+    for (const target of [...(graph.get(namespaceId) ?? [])].sort()) {
+      if (visiting.has(target)) {
+        const [left, right] = [namespaceId, target].sort();
+        throw new Error(
+          `Cross-namespace foreign keys form an import cycle (${left} ↔ ${right}); generate without --multi-domain`
+        );
       }
+      visit(target);
     }
+    visiting.delete(namespaceId);
+    visited.add(namespaceId);
+  };
 
-    if (warnings.length > 0) {
-      console.warn(
-        `[prisma-effect-kysely] @customType annotations use Effect 3 syntax that does not ` +
-          `compile against Effect 4. Update them in your Prisma schema:\n${warnings.join('\n')}`
+  for (const namespaceId of [...graph.keys()].sort()) visit(namespaceId);
+}
+
+interface NamespaceReferences {
+  imports: Map<string, string[]>;
+  fields: Map<TableField, string>;
+}
+
+function collectNamespaceReferences(
+  namespaceId: string,
+  modelSet: ContractModelSet
+): NamespaceReferences {
+  const imports = new Map<string, string[]>();
+  const fields = new Map<TableField, string>();
+  const bindings = new Map<string, string>();
+  const usedNames = new Set<string>();
+  const models = modelSet.models.filter((model) => model.namespaceId === namespaceId);
+  const enums = modelSet.enums.filter((enumModel) => enumModel.namespaceId === namespaceId);
+  const valueObjects = modelSet.valueObjects.filter(
+    (valueObject) => valueObject.namespaceId === namespaceId
+  );
+
+  for (const model of models) {
+    usedNames.add(model.schemaName);
+    usedNames.add(`${model.schemaName}Table`);
+    if (model.brandedId) usedNames.add(`${model.schemaName}Id`);
+  }
+  for (const enumModel of enums) usedNames.add(enumModel.schemaName);
+  for (const valueObject of valueObjects) usedNames.add(valueObject.schemaName);
+
+  if (enums.length > 0) {
+    imports.set(
+      './enums.js',
+      enums.map((enumModel) => enumModel.schemaName)
+    );
+  }
+
+  for (const field of [
+    ...models.flatMap((model) => model.fields),
+    ...valueObjects.flatMap((valueObject) => valueObject.fields),
+  ]) {
+    if (field.kind.type === 'enum' && field.kind.namespaceId !== namespaceId) {
+      fields.set(
+        field,
+        bindImport(
+          imports,
+          bindings,
+          usedNames,
+          `../${field.kind.namespaceId}/enums.js`,
+          field.kind.namespaceId,
+          toPascalCase(field.kind.enumName)
+        )
+      );
+    }
+    if (field.fkTarget && field.fkTarget.namespaceId !== namespaceId) {
+      fields.set(
+        field,
+        bindImport(
+          imports,
+          bindings,
+          usedNames,
+          `../${field.fkTarget.namespaceId}/types.js`,
+          field.fkTarget.namespaceId,
+          `${toPascalCase(field.fkTarget.model)}Id`
+        )
+      );
+    }
+  }
+  return { imports, fields };
+}
+
+export async function generate(options: GenerateOptions): Promise<{ files: string[] }> {
+  const contract = await readContract(options.contract);
+  const namespaceIds = Object.keys(contract.domain.namespaces).sort();
+  if (options.multiDomain) assertSafeNamespaceIds(namespaceIds);
+  const modelSet = buildModelSet(contract, options.multiDomain ?? false);
+  const overrides = await readOverrides(options);
+  let files: string[];
+
+  if (!options.multiDomain) {
+    const imports = new Map<string, string[]>();
+    if (modelSet.enums.length > 0) {
+      imports.set(
+        './enums.js',
+        modelSet.enums.map((enumModel) => enumModel.schemaName)
+      );
+    }
+    files = await writeGeneratedOutput(options.output, modelSet, imports, new Map(), overrides);
+  } else {
+    assertNoCrossNamespaceCycles(modelSet);
+    files = [];
+    for (const namespaceId of namespaceIds) {
+      const namespaceSet: ContractModelSet = {
+        models: modelSet.models.filter((model) => model.namespaceId === namespaceId),
+        enums: modelSet.enums.filter((enumModel) => enumModel.namespaceId === namespaceId),
+        valueObjects: modelSet.valueObjects.filter(
+          (valueObject) => valueObject.namespaceId === namespaceId
+        ),
+      };
+      const references = collectNamespaceReferences(namespaceId, modelSet);
+      files.push(
+        ...(await writeGeneratedOutput(
+          join(options.output, namespaceId),
+          namespaceSet,
+          references.imports,
+          references.fields,
+          overrides
+        ))
       );
     }
   }
 
-  /**
-   * Log generation completion
-   */
-  private logComplete() {
-    const _outputPath = this.fileManager.getOutputPath();
-
-    if (isMultiDomainEnabled(this.config)) {
-      // Multi-domain logic would go here if needed
-    } else {
-      // Single-domain logic would go here if needed
-    }
-  }
+  console.log(`prisma-effect-kysely: wrote ${files.length} files to ${options.output}`);
+  return { files };
 }

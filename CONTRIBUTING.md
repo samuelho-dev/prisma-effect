@@ -159,37 +159,32 @@ describe('FeatureName', () => {
 
 ```
 src/
-├── generator/          # Generator entry point and orchestration
-│   ├── index.ts       # Prisma generator handler
-│   └── orchestrator.ts # Coordinates generation flow
-├── prisma/            # Prisma domain logic (DMMF parsing)
-│   ├── generator.ts   # Prisma data extraction
-│   ├── type.ts        # Type utilities
-│   ├── enum.ts        # Enum utilities
-│   └── relation.ts    # Relation detection
-├── effect/            # Effect Schema generation
-│   ├── generator.ts   # Effect schema orchestration
-│   ├── type.ts        # Type schema generation
-│   ├── enum.ts        # Enum schema generation
-│   └── join-table.ts  # Join table schemas
-├── kysely/            # Kysely integration
-│   ├── generator.ts   # Kysely-specific generation
-│   ├── type.ts        # Kysely type mappings
-│   └── helpers.ts     # Runtime helpers (exported)
-├── utils/             # Shared utilities
-│   ├── naming.ts      # Naming conventions
-│   ├── templates.ts   # Code formatting
-│   └── annotations.ts # Custom type annotations
-└── __tests__/         # Test files
+├── generator/          # CLI, public API, and orchestration
+│   ├── cli.ts
+│   ├── index.ts
+│   └── orchestrator.ts
+├── prisma/             # Prisma 8 contract validation and table derivation
+│   ├── contract.ts
+│   └── model.ts
+├── effect/             # Effect Schema emission
+│   ├── generator.ts
+│   ├── type.ts
+│   └── enum.ts
+├── kysely/             # Kysely integration
+│   ├── generator.ts
+│   ├── type.ts
+│   └── helpers.ts
+├── utils/              # Naming, formatting, annotations, and file writes
+└── __tests__/          # Contract fixture and behavior tests
 ```
 
-## 🔍 Architecture Principles
+## Architecture Principles
 
-1. **Domain-Driven Design**: Separate Prisma, Effect, and Kysely concerns
-2. **Zero Type Coercion**: Use exact DMMF types from Prisma
-3. **Deterministic Output**: Alphabetically sorted for consistency
-4. **Pure Functions**: No side effects in core logic
-5. **Test-Driven Development**: Write tests before implementation
+1. Validate `contract.json` at the boundary
+2. Derive output from contract codecs and physical storage metadata
+3. Keep generated output deterministic
+4. Keep derivation pure; isolate file writes in the orchestrator
+5. Test observable generated contracts
 
 ## 🐛 Reporting Bugs
 
