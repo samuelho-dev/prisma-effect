@@ -237,6 +237,11 @@ export function buildModelSet(contract: Contract, multiDomain = false): Contract
         }
         mappedColumns.set(mapping.column, fieldName);
       }
+      for (const fieldName of Object.keys(definition.fields)) {
+        if (!definition.storage.fields[fieldName]) {
+          throw new Error(`Model ${name}.${fieldName} has no storage column mapping`);
+        }
+      }
 
       const domainFieldByColumn = new Map(
         Object.entries(definition.storage.fields).map(([fieldName, field]) => [

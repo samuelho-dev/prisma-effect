@@ -11,6 +11,7 @@ import { generateEnumsFile } from './enum.js';
 import { baseFieldType } from './type.js';
 
 function propertyKey(name: string): string {
+  if (name === '__proto__') return `[${JSON.stringify(name)}]`;
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
 }
 

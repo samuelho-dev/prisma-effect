@@ -313,7 +313,6 @@ export async function generate(options: GenerateOptions): Promise<{ files: strin
   let files: string[];
 
   if (!options.multiDomain) {
-    await removeObsoleteNamespaceOutput(options.output, new Set());
     const imports = new Map<string, string[]>();
     if (modelSet.enums.length > 0) {
       imports.set(
@@ -322,10 +321,9 @@ export async function generate(options: GenerateOptions): Promise<{ files: strin
       );
     }
     files = await writeGeneratedOutput(options.output, modelSet, imports, new Map(), overrides);
+    await removeObsoleteNamespaceOutput(options.output, new Set());
   } else {
     assertNoCrossNamespaceCycles(modelSet);
-    await removeGeneratedFiles(options.output);
-    await removeObsoleteNamespaceOutput(options.output, new Set(namespaceIds));
     files = [];
     for (const namespaceId of namespaceIds) {
       const namespaceSet: ContractModelSet = {
@@ -346,6 +344,8 @@ export async function generate(options: GenerateOptions): Promise<{ files: strin
         ))
       );
     }
+    await removeGeneratedFiles(options.output);
+    await removeObsoleteNamespaceOutput(options.output, new Set(namespaceIds));
   }
 
   console.log(`prisma-effect-kysely: wrote ${files.length} files to ${options.output}`);

@@ -55,23 +55,30 @@ describe('parseCustomTypeAnnotations', () => {
     expect(parseCustomTypeAnnotations(source).get('Nested.value')).toBe(expression);
   });
 
-  it('tracks namespaces and ignores parentheses inside literals', () => {
+  it('tracks namespaces and ignores annotation syntax inside literals', () => {
     const source = `
-      model AuditEntry {
-        /// @customType(Schema.Literal(")"))
-        value String
-        @@namespace("audit")
-      } // audit model
-
+      namespace audit {
+        model AuditEntry {
+          /// @customType(Schema.Literal(")"))
+          value String
+        } /* audit model
+        continued */
+      }
       model PublicEntry {
-        /// @customType(Schema.pattern(/\\)/))
-        value String
+        /// @customType(Schema.Literal("@customType"))
+        literal String
+        /// @customType(Schema.declare((input) => /[(]/.test(String(input))))
+        pattern String
+        /// @customType ( Schema.String )
+        spaced String
       }
     `;
 
     expect(Object.fromEntries(parseCustomTypeAnnotations(source))).toEqual({
       'audit.AuditEntry.value': 'Schema.Literal(")")',
-      'PublicEntry.value': 'Schema.pattern(/\\)/)',
+      'PublicEntry.literal': 'Schema.Literal("@customType")',
+      'PublicEntry.pattern': 'Schema.declare((input) => /[(]/.test(String(input)))',
+      'PublicEntry.spaced': 'Schema.String',
     });
   });
 
@@ -79,7 +86,7 @@ describe('parseCustomTypeAnnotations', () => {
     ['@customType(Schema.String', 'unclosed'],
     ['@customType(Schema.String) trailing', 'trailing'],
     ['@customType(lowercase)', 'invalid'],
-    ['@customType(Schema.String) @customType(Schema.Number)', 'duplicate'],
+    ['@customType(Schema.String)\n        /// @customType(Schema.Number)', 'duplicate'],
   ])('rejects %s annotations', (annotation) => {
     const source = `
       model Invalid {
@@ -91,5 +98,19 @@ describe('parseCustomTypeAnnotations', () => {
     expect(() => parseCustomTypeAnnotations(source)).toThrow(
       'Invalid @customType annotation for Invalid.value'
     );
+  });
+
+  it.each([
+    ['@@namespace()', 'invalid'],
+    ['@@namespace("audit")\n        @@namespace("public")', 'duplicate'],
+  ])('rejects %s namespace annotations', (annotation) => {
+    const source = `
+      model Invalid {
+        value String
+        ${annotation}
+      }
+    `;
+
+    expect(() => parseCustomTypeAnnotations(source)).toThrow(/@@namespace.*model Invalid/);
   });
 });

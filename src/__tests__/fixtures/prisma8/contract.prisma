@@ -170,9 +170,25 @@ model Bug {
   @@map("bug")
 }
 
+model CuidRecord {
+  id    String @id @default(cuid(2))
+  value String
+
+  @@map("cuid_record")
+}
+
 model session_model_preference {
   id    Uuid   @id @default(uuid())
   value String?
 
   @@map("session_preferences")
+}
+
+namespace audit {
+  model AuditRecord {
+    id      Int    @id @default(autoincrement())
+    message String
+
+    @@map("audit_record")
+  }
 }

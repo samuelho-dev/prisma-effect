@@ -28,13 +28,15 @@ async function main() {
   writeFileSync(
     join(out, 'contract-usage.ts'),
     `import type { Insertable, Selectable, Updateable } from "prisma-effect-kysely";
-import { PostId, PostTable, TodoId, TodoTable } from "./types.js";
+import { CuidRecordId, CuidRecordTable, PostId, PostTable, TodoId, TodoTable } from "./types.js";
 
+declare const cuidRecordId: typeof CuidRecordId.Type;
 declare const postId: typeof PostId.Type;
 declare const todoId: typeof TodoId.Type;
 declare const selectedTodo: Selectable<typeof TodoTable>;
 
 const insertablePrismaId: Pick<Insertable<typeof PostTable>, "id"> = { id: postId };
+const insertableCuid: Pick<Insertable<typeof CuidRecordTable>, "id"> = { id: cuidRecordId };
 const nullableInsert: Pick<Insertable<typeof PostTable>, "content"> = { content: null };
 const nullableUpdate: Pick<Updateable<typeof PostTable>, "content"> = { content: null };
 const selectedStorageId: typeof TodoId.Type = selectedTodo.id;
@@ -46,6 +48,7 @@ const invalidIdUpdate: Pick<Updateable<typeof PostTable>, "id"> = { id: postId }
 
 void [
   insertablePrismaId,
+  insertableCuid,
   nullableInsert,
   nullableUpdate,
   selectedStorageId,

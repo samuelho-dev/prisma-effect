@@ -65,6 +65,9 @@ describe('Prisma 8 contract model derivation', () => {
   it('distinguishes storage defaults from Prisma-applied defaults', () => {
     expect(requireField(requireModel(fixtureSet, 'Todo'), 'id').hasStorageDefault).toBe(true);
     expect(requireField(requireModel(fixtureSet, 'Post'), 'id').hasStorageDefault).toBe(false);
+    expect(requireField(requireModel(fixtureSet, 'CuidRecord'), 'id').hasStorageDefault).toBe(
+      false
+    );
   });
 
   it('resolves enum and value-object field kinds', () => {
@@ -81,34 +84,34 @@ describe('Prisma 8 contract model derivation', () => {
     });
   });
 
+  it('preserves explicit contract namespaces and physical database keys', () => {
+    const auditRecord = requireModel(fixtureSet, 'AuditRecord');
+    expect(auditRecord.namespaceId).toBe('audit');
+    expect(auditRecord.dbKey).toBe('audit.audit_record');
+  });
+
   it('uses stored enum values', () => {
     expect(requireEnum(fixtureSet, 'Status').values).toEqual(['active', 'inactive', 'pending']);
     expect(requireEnum(fixtureSet, 'Role').values).toEqual(['ADMIN', 'GUEST', 'USER']);
   });
 
-  it('rejects duplicate generated identifiers across namespaces', () => {
-    const user = model('User', {
-      table: 'user',
-      columns: {
-        id: { codecId: 'pg/uuid@1', nativeType: 'uuid', nullable: false },
-      },
-      fields: {
-        id: {
-          nullable: false,
-          type: { kind: 'scalar', codecId: 'pg/uuid@1' },
-        },
-      },
-      primaryKey: ['id'],
-    });
+  it('rejects names that normalize to the same generated identifier', () => {
+    const preference = (name: string, table: string) =>
+      model(name, {
+        table,
+        columns: { id: column('pg/uuid@1', 'uuid') },
+        fields: { id: scalar('pg/uuid@1') },
+        primaryKey: ['id'],
+      });
     const contract = makeContract({
       namespaces: {
-        public: { models: [user] },
-        audit: { models: [user] },
+        public: { models: [preference('session_model_preference', 'preference')] },
+        audit: { models: [preference('SessionModelPreference', 'audit_preference')] },
       },
     });
 
     expect(() => buildModelSet(contract)).toThrow(
-      'Duplicate generated identifier User (audit.User and public.User); use --multi-domain'
+      'Duplicate generated identifier SessionModelPreference (audit.SessionModelPreference and public.session_model_preference); use --multi-domain'
     );
   });
 
@@ -151,6 +154,14 @@ describe('Prisma 8 contract model derivation', () => {
     expect(
       new EffectGenerator(set).generateModelSchema(requireModel(set, 'Bug'), new Map(), new Map())
     ).toContain('"task-id": columnType(TaskId, TaskId, Schema.Never)');
+    const bugModel = requireModel(set, 'Bug');
+    const protoModel: TableModel = {
+      ...bugModel,
+      fields: bugModel.fields.map((field) => ({ ...field, tsName: '__proto__' })),
+    };
+    expect(
+      new EffectGenerator(set).generateModelSchema(protoModel, new Map(), new Map())
+    ).toContain('["__proto__"]: columnType(TaskId, TaskId, Schema.Never)');
   });
 
   it('rejects broken storage mappings and value-object references', () => {
@@ -164,6 +175,25 @@ describe('Prisma 8 contract model derivation', () => {
       buildModelSet(makeContract({ namespaces: { public: { models: [brokenMapping] } } }))
     ).toThrow('Mapped.id maps to unknown column public.mapped.missing');
 
+    const missingMapping = makeContract({
+      namespaces: {
+        public: {
+          models: [
+            model('MissingMapping', {
+              table: 'missing_mapping',
+              columns: { id: column('pg/uuid@1', 'uuid') },
+              fields: { id: scalar('pg/uuid@1') },
+              primaryKey: ['id'],
+            }),
+          ],
+        },
+      },
+    });
+    delete missingMapping.domain.namespaces.public.models.MissingMapping.storage.fields.id;
+    expect(() => buildModelSet(missingMapping)).toThrow(
+      'Model MissingMapping.id has no storage column mapping'
+    );
+
     const brokenValueObject = model('HasValue', {
       table: 'has_value',
       columns: { value: column('pg/jsonb@1', 'jsonb') },
@@ -174,6 +204,110 @@ describe('Prisma 8 contract model derivation', () => {
     expect(() =>
       buildModelSet(makeContract({ namespaces: { public: { models: [brokenValueObject] } } }))
     ).toThrow('Value object public.Missing referenced by HasValue.value was not found');
+  });
+
+  it('does not brand foreign keys to non-primary columns', () => {
+    const user = model('User', {
+      table: 'user',
+      columns: {
+        id: column('pg/uuid@1', 'uuid'),
+        email: column('pg/text@1', 'text'),
+      },
+      fields: {
+        id: scalar('pg/uuid@1'),
+        email: scalar('pg/text@1'),
+      },
+      primaryKey: ['id'],
+    });
+    const profile = model('Profile', {
+      table: 'profile',
+      columns: {
+        id: column('pg/uuid@1', 'uuid'),
+        userEmail: column('pg/text@1', 'text'),
+      },
+      fields: {
+        id: scalar('pg/uuid@1'),
+        userEmail: scalar('pg/text@1'),
+      },
+      primaryKey: ['id'],
+      foreignKeys: [foreignKey('public', 'profile', 'userEmail', 'public', 'user', 'email')],
+    });
+    const set = buildModelSet(
+      makeContract({ namespaces: { public: { models: [user, profile] } } })
+    );
+
+    expect(requireField(requireModel(set, 'Profile'), 'userEmail').fkTarget).toBeUndefined();
+  });
+
+  it('preserves union, dictionary, collection, and nullability metadata', () => {
+    const entry = model('Entry', {
+      table: 'entry',
+      columns: { values: column('pg/jsonb@1', 'jsonb', true) },
+      fields: {
+        values: {
+          nullable: true,
+          many: true,
+          dict: true,
+          type: {
+            kind: 'union',
+            members: [
+              { kind: 'scalar', codecId: 'pg/text@1' },
+              { kind: 'valueObject', name: 'Address' },
+            ],
+          },
+        },
+      },
+    });
+    const set = buildModelSet(
+      makeContract({
+        namespaces: {
+          public: {
+            models: [entry],
+            valueObjects: [valueObject('Address', { city: scalar('pg/text@1') })],
+          },
+        },
+      })
+    );
+
+    expect(requireField(requireModel(set, 'Entry'), 'values')).toMatchObject({
+      nullable: true,
+      many: true,
+      dict: true,
+      kind: {
+        type: 'union',
+        members: [
+          { type: 'scalar', codecId: 'pg/text@1' },
+          { type: 'valueObject', name: 'Address' },
+        ],
+      },
+    });
+  });
+
+  it('reports missing tables and enums with their field paths', () => {
+    const entry = model('Entry', {
+      table: 'entry',
+      columns: { status: column('pg/text@1', 'text') },
+      fields: {
+        status: {
+          ...scalar('pg/text@1'),
+          valueSet: {
+            plane: 'domain',
+            entityKind: 'enum',
+            entityName: 'Missing',
+            namespaceId: 'public',
+          },
+        },
+      },
+    });
+    const missingTable = makeContract({ namespaces: { public: { models: [entry] } } });
+    delete missingTable.storage.namespaces.public.entries.table?.entry;
+    expect(() => buildModelSet(missingTable)).toThrow(
+      'Model Entry maps to unknown table public.entry'
+    );
+
+    expect(() =>
+      buildModelSet(makeContract({ namespaces: { public: { models: [entry] } } }))
+    ).toThrow('Enum public.Missing referenced by Entry.status was not found');
   });
 
   it('rejects collisions with derived and generator-owned bindings', () => {

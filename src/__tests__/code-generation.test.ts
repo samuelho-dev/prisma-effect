@@ -72,6 +72,7 @@ describe('Prisma 8 contract code generation', () => {
     );
     expect(typesContent).toContain('id: columnType(PostId, PostId, Schema.Never)');
     expect(typesContent).toContain('id: columnType(TodoId, Schema.Never, Schema.Never)');
+    expect(typesContent).toContain('id: columnType(CuidRecordId, CuidRecordId, Schema.Never)');
     expect(typesContent).toContain('code: columnType(CountryId, CountryId, Schema.Never)');
     const bugTable = generatedTable(typesContent, 'Bug');
     expect(bugTable).toContain('id: columnType(TaskId, TaskId, Schema.Never)');
@@ -123,6 +124,9 @@ describe('Prisma 8 contract code generation', () => {
 
   it('emits every physical table and no implicit join table', () => {
     expect(typesContent).toContain('all_types: Schema.Schema.Type<typeof AllTypesTable>');
+    expect(typesContent).toContain(
+      '"audit.audit_record": Schema.Schema.Type<typeof AuditRecordTable>'
+    );
     expect(typesContent).toContain(
       'session_preferences: Schema.Schema.Type<typeof SessionModelPreferenceTable>'
     );

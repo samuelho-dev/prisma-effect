@@ -13,6 +13,7 @@ import {
   model,
   scalar,
   twoNamespaceContract,
+  valueObject,
 } from './helpers/contract-mocks';
 
 // Mock prettier
@@ -123,6 +124,7 @@ describe('multi-domain contract generation', () => {
 
     const types = await readFile(join(inheritedOutput, 'audit/types.ts'), 'utf8');
     expect(types).toContain('import { TaskId } from "../public/types.js";');
+    expect(types).toContain('bugId: TaskId');
     expect(types).not.toContain('BugId');
   });
 
@@ -163,6 +165,30 @@ describe('multi-domain contract generation', () => {
     await writeFile(contract, JSON.stringify(twoNamespaceContract()));
     await generate({ contract, output: regenerationOutput, multiDomain: true });
     expect(existsSync(join(regenerationOutput, 'public/enums.ts'))).toBe(true);
+
+    const reference = (name: string) => ({
+      nullable: false,
+      type: { kind: 'valueObject' as const, name },
+    });
+    await writeFile(
+      contract,
+      JSON.stringify(
+        makeContract({
+          namespaces: {
+            public: {
+              valueObjects: [
+                valueObject('A', { b: reference('B') }),
+                valueObject('B', { a: reference('A') }),
+              ],
+            },
+          },
+        })
+      )
+    );
+    await expect(
+      generate({ contract, output: regenerationOutput, multiDomain: true })
+    ).rejects.toThrow('Value object A forms a reference cycle');
+    expect(existsSync(join(regenerationOutput, 'audit/types.ts'))).toBe(true);
 
     await writeFile(contract, JSON.stringify(makeContract({ namespaces: { public: {} } })));
     await generate({ contract, output: regenerationOutput, multiDomain: true });

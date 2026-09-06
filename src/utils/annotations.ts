@@ -2,11 +2,9 @@
  * Extract a balanced `@customType(...)` expression from Prisma doc text.
  */
 export function extractCustomType(doc: string): string | null {
-  const annotations = [...doc.matchAll(/@customType\b/g)];
-  if (annotations.length === 0) return null;
-  if (annotations.length > 1) throw new Error('duplicate @customType annotations');
+  const annotation = /@customType\b/.exec(doc);
+  if (!annotation || annotation.index === undefined) return null;
 
-  const annotation = annotations[0];
   const annotationStart = annotation.index;
   const opening = /^@customType\s*\(/.exec(doc.slice(annotationStart));
   if (!opening) throw new Error('expected @customType(<Effect schema>)');
@@ -14,6 +12,8 @@ export function extractCustomType(doc: string): string | null {
   const start = annotationStart + opening[0].length;
   const end = findClosingParenthesis(doc, start);
   if (end === -1) throw new Error('unclosed @customType annotation');
+  const remaining = doc.slice(0, annotationStart) + doc.slice(end + 1);
+  if (/@customType\b/.test(remaining)) throw new Error('duplicate @customType annotations');
 
   const lineEnd = doc.indexOf('\n', end + 1);
   const trailing = doc.slice(end + 1, lineEnd === -1 ? doc.length : lineEnd).trim();
@@ -64,7 +64,11 @@ function findClosingParenthesis(value: string, start: number): number {
 
 function startsRegex(value: string, index: number): boolean {
   const previous = value.slice(0, index).trimEnd().at(-1);
-  return previous === undefined || '([{:;,=!?&|'.includes(previous);
+  return (
+    previous === undefined ||
+    '([{:;,=!?&|>'.includes(previous) ||
+    /\b(?:return|case|throw|yield)$/.test(value.slice(0, index).trimEnd())
+  );
 }
 
 /**
@@ -73,31 +77,44 @@ function startsRegex(value: string, index: number): boolean {
 export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
   const annotations = new Map<string, string>();
   let modelName: string | null = null;
-  let namespaceId: string | null = null;
+  let enclosingNamespaceId: string | null = null;
+  let modelNamespaceId: string | null = null;
   let fields: Array<[name: string, customType: string]> = [];
   let docs: string[] = [];
 
   const finishModel = (): void => {
     if (!modelName) return;
     for (const [fieldName, customType] of fields) {
-      const key = `${namespaceId ? `${namespaceId}.` : ''}${modelName}.${fieldName}`;
+      const key = `${modelNamespaceId ? `${modelNamespaceId}.` : ''}${modelName}.${fieldName}`;
       if (annotations.has(key)) throw new Error(`Duplicate @customType annotation for ${key}`);
       annotations.set(key, customType);
     }
     modelName = null;
-    namespaceId = null;
+    modelNamespaceId = null;
     fields = [];
     docs = [];
   };
 
   for (const line of psl.split(/\r?\n/)) {
     if (!modelName) {
+      const namespace = /^\s*namespace\s+([A-Za-z_]\w*)\s*\{/.exec(line);
+      if (namespace?.[1]) {
+        enclosingNamespaceId = namespace[1];
+        continue;
+      }
+      if (enclosingNamespaceId && /^\s*}/.test(line)) {
+        enclosingNamespaceId = null;
+        continue;
+      }
       const model = /^\s*model\s+([A-Za-z_]\w*)\s*\{/.exec(line);
-      if (model?.[1]) modelName = model[1];
+      if (model?.[1]) {
+        modelName = model[1];
+        modelNamespaceId = enclosingNamespaceId;
+      }
       continue;
     }
 
-    if (/^\s*}\s*(?:(?:\/\/.*)|(?:\/\*.*\*\/))?\s*$/.test(line)) {
+    if (/^\s*}/.test(line)) {
       finishModel();
       continue;
     }
@@ -109,14 +126,21 @@ export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
     }
 
     if (trimmed.startsWith('@@namespace')) {
-      const namespace = /^@@namespace\s*\(\s*"([^"]+)"\s*\)\s*$/.exec(trimmed);
+      const namespace =
+        /^@@namespace\s*\(\s*("(?:\\.|[^"\\])*")\s*\)\s*(?:(?:\/\/.*)|(?:\/\*.*\*\/))?\s*$/.exec(
+          trimmed
+        );
       if (!namespace?.[1]) {
         throw new Error(`Invalid @@namespace annotation for model ${modelName}`);
       }
-      if (namespaceId !== null) {
+      if (modelNamespaceId !== null) {
         throw new Error(`Duplicate @@namespace annotation for model ${modelName}`);
       }
-      namespaceId = namespace[1];
+      try {
+        modelNamespaceId = JSON.parse(namespace[1]) as string;
+      } catch (error) {
+        throw new Error(`Invalid @@namespace annotation for model ${modelName}`, { cause: error });
+      }
     } else if (!trimmed.startsWith('@@') && !trimmed.startsWith('//')) {
       const field = /^\s*([A-Za-z_]\w*)\s+\S/.exec(line);
       if (field?.[1] && docs.some((doc) => doc.includes('@customType'))) {

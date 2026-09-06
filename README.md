@@ -109,7 +109,7 @@ Generated enum types are string literal unions; use `"ADMIN"` rather than
 
 - Non-primary-key columns with database defaults (`now()` and literals) → `generated()`
 - A single-column primary key with a database default → `columnType(Id, Schema.Never, Schema.Never)`
-- A client-supplied or Prisma-applied primary key (for example `uuid()`) → insertable, immutable
+- A client-supplied or Prisma-applied primary key (for example `uuid()` or `cuid(2)`) → insertable, immutable
 - Optional fields → `Schema.NullOr(type)`
 - Foreign keys → branded ID type from the target model
 - Explicit join models are emitted as ordinary tables; Prisma 8 has no implicit M2M tables
