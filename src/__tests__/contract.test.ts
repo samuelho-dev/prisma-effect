@@ -17,7 +17,7 @@ describe('Prisma 8 contract input', () => {
         ...fixtureJson,
         schemaVersion: '2',
       })
-    ).toThrow();
+    ).toThrow(/schemaVersion/);
   });
 
   it('rejects a non-SQL target family', () => {
@@ -26,7 +26,14 @@ describe('Prisma 8 contract input', () => {
         ...fixtureJson,
         targetFamily: 'document',
       })
-    ).toThrow();
+    ).toThrow(/targetFamily/);
+  });
+
+  it('rejects unsupported value-set variants at their field path', () => {
+    const invalid = structuredClone(fixtureJson);
+    invalid.domain.namespaces.public.models.AllTypes.fields.status.valueSet.entityKind = 'model';
+
+    expect(() => parseContract(invalid)).toThrow(/AllTypes.*status.*valueSet.*entityKind/s);
   });
 
   it('explains how to create a missing contract', async () => {

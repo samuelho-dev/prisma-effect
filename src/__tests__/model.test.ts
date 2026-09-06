@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EffectGenerator } from '../effect/generator';
 import { parseContract } from '../prisma/contract';
 import {
   buildModelSet,
@@ -8,7 +9,14 @@ import {
   type TableModel,
 } from '../prisma/model';
 import fixtureJson from './fixtures/prisma8/contract.json';
-import { makeContract, model } from './helpers/contract-mocks';
+import {
+  column,
+  foreignKey,
+  makeContract,
+  model,
+  scalar,
+  valueObject,
+} from './helpers/contract-mocks';
 
 const fixtureSet = buildModelSet(parseContract(fixtureJson));
 
@@ -38,11 +46,15 @@ describe('Prisma 8 contract model derivation', () => {
     expect(requireField(bug, 'id').fkTarget).toEqual({
       model: 'Task',
       namespaceId: 'public',
+      idModel: 'Task',
+      idNamespaceId: 'public',
     });
     expect(bug.brandedId).toBeUndefined();
     expect(requireField(post, 'authorId').fkTarget).toEqual({
       model: 'User',
       namespaceId: 'public',
+      idModel: 'User',
+      idNamespaceId: 'public',
     });
   });
 
@@ -98,5 +110,103 @@ describe('Prisma 8 contract model derivation', () => {
     expect(() => buildModelSet(contract)).toThrow(
       'Duplicate generated identifier User (audit.User and public.User); use --multi-domain'
     );
+  });
+
+  it('resolves inherited primary-key brands and quotes physical-only fields', () => {
+    const task = model('Task', {
+      table: 'task',
+      columns: { id: column('pg/uuid@1', 'uuid') },
+      fields: { id: scalar('pg/uuid@1') },
+      primaryKey: ['id'],
+    });
+    const bug = model('Bug', {
+      table: 'bug',
+      columns: { 'task-id': column('pg/uuid@1', 'uuid') },
+      fields: {},
+      primaryKey: ['task-id'],
+      foreignKeys: [foreignKey('public', 'bug', 'task-id', 'public', 'task', 'id')],
+    });
+    const report = model('Report', {
+      table: 'report',
+      columns: {
+        id: column('pg/uuid@1', 'uuid'),
+        bugId: column('pg/uuid@1', 'uuid'),
+      },
+      fields: {
+        id: scalar('pg/uuid@1'),
+        bugId: scalar('pg/uuid@1'),
+      },
+      primaryKey: ['id'],
+      foreignKeys: [foreignKey('public', 'report', 'bugId', 'public', 'bug', 'task-id')],
+    });
+    const set = buildModelSet(
+      makeContract({ namespaces: { public: { models: [task, bug, report] } } })
+    );
+
+    expect(requireField(requireModel(set, 'Report'), 'bugId').fkTarget).toMatchObject({
+      model: 'Bug',
+      idModel: 'Task',
+      idNamespaceId: 'public',
+    });
+    expect(
+      new EffectGenerator(set).generateModelSchema(requireModel(set, 'Bug'), new Map(), new Map())
+    ).toContain('"task-id": columnType(TaskId, TaskId, Schema.Never)');
+  });
+
+  it('rejects broken storage mappings and value-object references', () => {
+    const brokenMapping = model('Mapped', {
+      table: 'mapped',
+      columns: { id: column('pg/uuid@1', 'uuid') },
+      fields: { id: { ...scalar('pg/uuid@1'), column: 'missing' } },
+      primaryKey: ['id'],
+    });
+    expect(() =>
+      buildModelSet(makeContract({ namespaces: { public: { models: [brokenMapping] } } }))
+    ).toThrow('Mapped.id maps to unknown column public.mapped.missing');
+
+    const brokenValueObject = model('HasValue', {
+      table: 'has_value',
+      columns: { value: column('pg/jsonb@1', 'jsonb') },
+      fields: {
+        value: { nullable: false, type: { kind: 'valueObject', name: 'Missing' } },
+      },
+    });
+    expect(() =>
+      buildModelSet(makeContract({ namespaces: { public: { models: [brokenValueObject] } } }))
+    ).toThrow('Value object public.Missing referenced by HasValue.value was not found');
+  });
+
+  it('rejects collisions with derived and generator-owned bindings', () => {
+    const user = model('User', {
+      table: 'user',
+      columns: { id: column('pg/uuid@1', 'uuid') },
+      fields: { id: scalar('pg/uuid@1') },
+      primaryKey: ['id'],
+    });
+
+    expect(() =>
+      buildModelSet(
+        makeContract({
+          namespaces: {
+            public: {
+              models: [user],
+              valueObjects: [valueObject('UserId', { value: scalar('pg/text@1') })],
+            },
+          },
+        })
+      )
+    ).toThrow('Duplicate generated identifier UserId');
+
+    expect(() =>
+      buildModelSet(
+        makeContract({
+          namespaces: {
+            public: {
+              valueObjects: [valueObject('Schema', { value: scalar('pg/text@1') })],
+            },
+          },
+        })
+      )
+    ).toThrow('Duplicate generated identifier Schema');
   });
 });

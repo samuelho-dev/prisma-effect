@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { Schema } from 'effect';
 
 const ValueSetRef = Schema.Struct({
-  plane: Schema.String,
-  entityKind: Schema.String,
+  plane: Schema.Literal('domain'),
+  entityKind: Schema.Literal('enum'),
   entityName: Schema.String,
   namespaceId: Schema.String,
 });

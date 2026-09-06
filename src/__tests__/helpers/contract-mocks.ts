@@ -145,15 +145,15 @@ export function makeContract({ namespaces }: MakeContractOptions): Contract {
   };
 }
 
-function scalar(codecId: string, nullable = false): ContractField {
+export function scalar(codecId: string, nullable = false): ContractField {
   return { nullable, type: { kind: 'scalar', codecId } };
 }
 
-function column(codecId: string, nativeType: string, nullable = false): StorageColumn {
+export function column(codecId: string, nativeType: string, nullable = false): StorageColumn {
   return { codecId, nativeType, nullable };
 }
 
-function foreignKey(
+export function foreignKey(
   sourceNamespace: string,
   sourceTable: string,
   sourceColumn: string,

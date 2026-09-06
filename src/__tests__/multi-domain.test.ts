@@ -6,8 +6,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { generate } from '../generator/orchestrator';
 import {
   collidingNamespaceContract,
+  column,
   cyclicNamespaceContract,
+  foreignKey,
   makeContract,
+  model,
+  scalar,
   twoNamespaceContract,
 } from './helpers/contract-mocks';
 
@@ -75,6 +79,53 @@ describe('multi-domain contract generation', () => {
     expect(types).toContain('role: PublicRole');
   });
 
+  it('imports the inherited brand owner for cross-namespace variant references', async () => {
+    const task = model('Task', {
+      table: 'task',
+      columns: { id: column('pg/uuid@1', 'uuid') },
+      fields: { id: scalar('pg/uuid@1') },
+      primaryKey: ['id'],
+    });
+    const bug = model('Bug', {
+      table: 'bug',
+      columns: { id: column('pg/uuid@1', 'uuid') },
+      fields: {},
+      primaryKey: ['id'],
+      foreignKeys: [foreignKey('public', 'bug', 'id', 'public', 'task', 'id')],
+    });
+    const report = model('Report', {
+      table: 'report',
+      columns: {
+        id: column('pg/uuid@1', 'uuid'),
+        bugId: column('pg/uuid@1', 'uuid'),
+      },
+      fields: {
+        id: scalar('pg/uuid@1'),
+        bugId: scalar('pg/uuid@1'),
+      },
+      primaryKey: ['id'],
+      foreignKeys: [foreignKey('audit', 'report', 'bugId', 'public', 'bug', 'id')],
+    });
+    const contract = join(temporaryDirectory, 'inherited-id.json');
+    const inheritedOutput = join(temporaryDirectory, 'inherited-output');
+    await writeFile(
+      contract,
+      JSON.stringify(
+        makeContract({
+          namespaces: {
+            public: { models: [task, bug] },
+            audit: { models: [report] },
+          },
+        })
+      )
+    );
+    await generate({ contract, output: inheritedOutput, multiDomain: true });
+
+    const types = await readFile(join(inheritedOutput, 'audit/types.ts'), 'utf8');
+    expect(types).toContain('import { TaskId } from "../public/types.js";');
+    expect(types).not.toContain('BugId');
+  });
+
   it('rejects namespace names that escape the output directory', async () => {
     const contract = join(temporaryDirectory, 'unsafe-namespace.json');
     await writeFile(contract, JSON.stringify(makeContract({ namespaces: { '../outside': {} } })));
@@ -86,6 +137,24 @@ describe('multi-domain contract generation', () => {
         multiDomain: true,
       })
     ).rejects.toThrow('Contract namespace "../outside" is not a safe output directory name');
+  });
+
+  it('rejects namespace names that collide on case-insensitive filesystems', async () => {
+    const contract = join(temporaryDirectory, 'case-collision.json');
+    await writeFile(
+      contract,
+      JSON.stringify(makeContract({ namespaces: { Audit: {}, audit: {} } }))
+    );
+
+    await expect(
+      generate({
+        contract,
+        output: join(temporaryDirectory, 'case-collision-output'),
+        multiDomain: true,
+      })
+    ).rejects.toThrow(
+      'Contract namespaces "Audit" and "audit" share an output directory on case-insensitive filesystems'
+    );
   });
 
   it('removes an obsolete enum file on regeneration', async () => {
@@ -101,6 +170,7 @@ describe('multi-domain contract generation', () => {
     await expect(
       readFile(join(regenerationOutput, 'public/index.ts'), 'utf8')
     ).resolves.not.toContain('enums.js');
+    expect(existsSync(join(regenerationOutput, 'audit'))).toBe(false);
   });
 
   it('rejects cyclic cross-namespace branded-ID imports', async () => {

@@ -54,4 +54,42 @@ describe('parseCustomTypeAnnotations', () => {
 
     expect(parseCustomTypeAnnotations(source).get('Nested.value')).toBe(expression);
   });
+
+  it('tracks namespaces and ignores parentheses inside literals', () => {
+    const source = `
+      model AuditEntry {
+        /// @customType(Schema.Literal(")"))
+        value String
+        @@namespace("audit")
+      } // audit model
+
+      model PublicEntry {
+        /// @customType(Schema.pattern(/\\)/))
+        value String
+      }
+    `;
+
+    expect(Object.fromEntries(parseCustomTypeAnnotations(source))).toEqual({
+      'audit.AuditEntry.value': 'Schema.Literal(")")',
+      'PublicEntry.value': 'Schema.pattern(/\\)/)',
+    });
+  });
+
+  it.each([
+    ['@customType(Schema.String', 'unclosed'],
+    ['@customType(Schema.String) trailing', 'trailing'],
+    ['@customType(lowercase)', 'invalid'],
+    ['@customType(Schema.String) @customType(Schema.Number)', 'duplicate'],
+  ])('rejects %s annotations', (annotation) => {
+    const source = `
+      model Invalid {
+        /// ${annotation}
+        value String
+      }
+    `;
+
+    expect(() => parseCustomTypeAnnotations(source)).toThrow(
+      'Invalid @customType annotation for Invalid.value'
+    );
+  });
 });

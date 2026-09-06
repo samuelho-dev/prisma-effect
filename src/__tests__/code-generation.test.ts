@@ -9,6 +9,15 @@ vi.mock('../utils/templates', () => ({
   formatCode: vi.fn((code: string) => Promise.resolve(code)),
 }));
 
+function generatedTable(source: string, name: string): string {
+  const startMarker = `export const ${name}Table = Schema.Struct({`;
+  const endMarker = `export const ${name} = Selectable(${name}Table)`;
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker);
+  if (start === -1 || end === -1) throw new Error(`Generated ${name} table was not found`);
+  return source.slice(start, end);
+}
+
 describe('Prisma 8 contract code generation', () => {
   const contract = join(import.meta.dirname, 'fixtures/prisma8/contract.json');
   let temporaryDirectory: string;
@@ -43,6 +52,16 @@ describe('Prisma 8 contract code generation', () => {
     expect(indexContent).toContain('export * from "./types.js";');
   });
 
+  it('exports compilable schema values and matching types', () => {
+    expect(typesContent).toContain('import { Schema } from "effect";');
+    expect(typesContent).toContain(
+      'import { columnType, generated, JsonValue, Selectable } from "prisma-effect-kysely";'
+    );
+    expect(typesContent).toContain('export const User = Selectable(UserTable);');
+    expect(typesContent).toContain('export type User = typeof User.Type;');
+    expect(enumsContent).toContain('export type Role = typeof Role.Type;');
+  });
+
   it('emits branded IDs and the correct Kysely primary-key contracts', () => {
     expect(typesContent).toContain(
       'export const PostId = Schema.String.check(Schema.isUUID()).pipe(Schema.brand("PostId"))'
@@ -54,16 +73,10 @@ describe('Prisma 8 contract code generation', () => {
     expect(typesContent).toContain('id: columnType(PostId, PostId, Schema.Never)');
     expect(typesContent).toContain('id: columnType(TodoId, Schema.Never, Schema.Never)');
     expect(typesContent).toContain('code: columnType(CountryId, CountryId, Schema.Never)');
-    const bugTable = typesContent.slice(
-      typesContent.indexOf('export const BugTable = Schema.Struct({'),
-      typesContent.indexOf('export const Bug = Selectable(BugTable)')
-    );
+    const bugTable = generatedTable(typesContent, 'Bug');
     expect(bugTable).toContain('id: columnType(TaskId, TaskId, Schema.Never)');
     expect(typesContent).not.toContain('export const BugId');
-    const postTagTable = typesContent.slice(
-      typesContent.indexOf('export const PostTagTable = Schema.Struct({'),
-      typesContent.indexOf('export const PostTag = Selectable(PostTagTable)')
-    );
+    const postTagTable = generatedTable(typesContent, 'PostTag');
     expect(postTagTable).toContain('postId: PostId');
     expect(postTagTable).toContain('tagId: TagId');
     expect(postTagTable).not.toContain('columnType(');
@@ -75,6 +88,8 @@ describe('Prisma 8 contract code generation', () => {
     expect(typesContent).toContain('createdAt: generated(Schema.Date)');
     expect(typesContent).toContain('status: generated(Status)');
     expect(typesContent).toContain('address: Schema.NullOr(Address)');
+    const postTable = generatedTable(typesContent, 'Post');
+    expect(postTable).not.toMatch(/^\s+(?:author|posts):/m);
     const addressDeclaration = 'export const Address = Schema.Struct({';
     const allTypesDeclaration = 'export const AllTypesTable = Schema.Struct({';
     expect(typesContent).toContain(addressDeclaration);
@@ -90,6 +105,10 @@ describe('Prisma 8 contract code generation', () => {
     expect(typesContent).toContain('decimalField: Schema.String');
     expect(typesContent).toContain('bytesField: Schema.Uint8Array');
     expect(typesContent).toContain('stringArray: Schema.Array(Schema.String)');
+    expect(typesContent).toContain(
+      'optionalJson: columnType(Schema.NullOr(JsonValue), Schema.NullOr(JsonValue), Schema.NullOr(JsonValue))'
+    );
+    expect(typesContent).toContain('optionalRole: Schema.NullOr(Role)');
   });
 
   it('applies mapped keys and custom type annotations', () => {

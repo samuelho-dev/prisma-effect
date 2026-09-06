@@ -18,7 +18,7 @@ export interface TableField {
       };
   hasStorageDefault: boolean;
   isPrimaryKey: boolean;
-  fkTarget?: { model: string; namespaceId: string };
+  fkTarget?: { model: string; namespaceId: string; idModel: string; idNamespaceId: string };
 }
 
 export interface TableModel {
@@ -58,8 +58,13 @@ function modelTableKey(namespaceId: string, table: string): string {
   return `${namespaceId}\0${table}`;
 }
 
-function getFieldKind(contract: Contract, field: DomainField, fieldLabel: string): FieldKind {
-  if (field.valueSet?.entityKind === 'enum') {
+function getFieldKind(
+  contract: Contract,
+  namespaceId: string,
+  field: DomainField,
+  fieldLabel: string
+): FieldKind {
+  if (field.valueSet) {
     const enumDefinition =
       contract.domain.namespaces[field.valueSet.namespaceId]?.enum?.[field.valueSet.entityName];
     if (!enumDefinition) {
@@ -74,37 +79,78 @@ function getFieldKind(contract: Contract, field: DomainField, fieldLabel: string
     };
   }
 
+  const requireValueObject = (name: string): void => {
+    if (!contract.domain.namespaces[namespaceId]?.valueObjects?.[name]) {
+      throw new Error(
+        `Value object ${namespaceId}.${name} referenced by ${fieldLabel} was not found`
+      );
+    }
+  };
+
   switch (field.type.kind) {
     case 'scalar':
       return { type: 'scalar' };
     case 'valueObject':
+      requireValueObject(field.type.name);
       return { type: 'valueObject', name: field.type.name };
     case 'union':
       return {
         type: 'union',
-        members: field.type.members.map((member) =>
-          member.kind === 'scalar'
-            ? { type: 'scalar' as const, codecId: member.codecId }
-            : { type: 'valueObject' as const, name: member.name }
-        ),
+        members: field.type.members.map((member) => {
+          if (member.kind === 'scalar') {
+            return { type: 'scalar' as const, codecId: member.codecId };
+          }
+          requireValueObject(member.name);
+          return { type: 'valueObject' as const, name: member.name };
+        }),
       };
   }
 }
 
 function assertUniqueSchemaNames(set: ContractModelSet, multiDomain: boolean): void {
-  const seen = new Map<string, string>();
-  const entities = [...set.models, ...set.enums, ...set.valueObjects];
+  const namespaceIds = [
+    ...new Set(
+      [...set.models, ...set.enums, ...set.valueObjects].map((entity) =>
+        multiDomain ? entity.namespaceId : '*'
+      )
+    ),
+  ];
 
-  for (const entity of entities) {
-    const key = multiDomain ? `${entity.namespaceId}\0${entity.schemaName}` : entity.schemaName;
-    const previous = seen.get(key);
-    const label = `${entity.namespaceId}.${entity.name}`;
-    if (previous) {
-      throw new Error(
-        `Duplicate generated identifier ${entity.schemaName} (${previous} and ${label}); use --multi-domain`
-      );
+  for (const namespaceId of namespaceIds) {
+    const seen = new Map<string, string>([
+      ['Schema', 'Effect import'],
+      ['columnType', 'Kysely helper import'],
+      ['generated', 'Kysely helper import'],
+      ['JsonValue', 'Kysely helper import'],
+      ['Selectable', 'Kysely helper import'],
+      ['DB', 'generated database interface'],
+    ]);
+    const inScope = (entity: { namespaceId: string }): boolean =>
+      !multiDomain || entity.namespaceId === namespaceId;
+    const claim = (identifier: string, label: string): void => {
+      const previous = seen.get(identifier);
+      if (previous) {
+        throw new Error(
+          `Duplicate generated identifier ${identifier} (${previous} and ${label})${
+            multiDomain ? '' : '; use --multi-domain'
+          }`
+        );
+      }
+      seen.set(identifier, label);
+    };
+
+    for (const model of set.models.filter(inScope)) {
+      const label = `${model.namespaceId}.${model.name}`;
+      claim(model.schemaName, label);
+      claim(`${model.schemaName}Table`, label);
+      if (model.brandedId) claim(`${model.schemaName}Id`, label);
     }
-    seen.set(key, label);
+    for (const enumModel of set.enums.filter(inScope)) {
+      claim(enumModel.schemaName, `${enumModel.namespaceId}.${enumModel.name}`);
+    }
+    for (const valueObject of set.valueObjects.filter(inScope)) {
+      claim(valueObject.schemaName, `${valueObject.namespaceId}.${valueObject.name}`);
+    }
   }
 }
 
@@ -155,7 +201,7 @@ export function buildModelSet(contract: Contract, multiDomain = false): Contract
               nullable: field.nullable,
               many: field.many ?? false,
               dict: field.dict ?? false,
-              kind: getFieldKind(contract, field, `${name}.${fieldName}`),
+              kind: getFieldKind(contract, namespaceId, field, `${name}.${fieldName}`),
               hasStorageDefault: false,
               isPrimaryKey: false,
             })
@@ -173,13 +219,32 @@ export function buildModelSet(contract: Contract, multiDomain = false): Contract
         );
       }
 
+      const mappedColumns = new Map<string, string>();
+      for (const [fieldName, mapping] of Object.entries(definition.storage.fields)) {
+        if (!definition.fields[fieldName]) {
+          throw new Error(`Model ${name} maps unknown field ${fieldName} to storage`);
+        }
+        if (!table.columns[mapping.column]) {
+          throw new Error(
+            `Model ${name}.${fieldName} maps to unknown column ${definition.storage.namespaceId}.${definition.storage.table}.${mapping.column}`
+          );
+        }
+        const previous = mappedColumns.get(mapping.column);
+        if (previous) {
+          throw new Error(
+            `Model ${name} fields ${previous} and ${fieldName} both map to column ${mapping.column}`
+          );
+        }
+        mappedColumns.set(mapping.column, fieldName);
+      }
+
       const domainFieldByColumn = new Map(
         Object.entries(definition.storage.fields).map(([fieldName, field]) => [
           field.column,
           { name: fieldName, definition: definition.fields[fieldName] },
         ])
       );
-      const foreignKeyByColumn = new Map<string, { model: string; namespaceId: string }>();
+      const foreignKeyByColumn = new Map<string, NonNullable<TableField['fkTarget']>>();
 
       for (const foreignKey of table.foreignKeys) {
         if (foreignKey.source.columns.length !== 1) continue;
@@ -201,7 +266,13 @@ export function buildModelSet(contract: Contract, multiDomain = false): Contract
           modelTableKey(foreignKey.target.namespaceId, foreignKey.target.tableName)
         );
         const sourceColumn = foreignKey.source.columns[0];
-        if (targetModel && sourceColumn) foreignKeyByColumn.set(sourceColumn, targetModel);
+        if (targetModel && sourceColumn) {
+          foreignKeyByColumn.set(sourceColumn, {
+            ...targetModel,
+            idModel: targetModel.model,
+            idNamespaceId: targetModel.namespaceId,
+          });
+        }
       }
 
       const primaryKeyColumns = new Set(table.primaryKey?.columns ?? []);
@@ -218,7 +289,7 @@ export function buildModelSet(contract: Contract, multiDomain = false): Contract
             many: field?.many ?? column.many ?? false,
             dict: field?.dict ?? false,
             kind: field
-              ? getFieldKind(contract, field, `${name}.${domainField.name}`)
+              ? getFieldKind(contract, namespaceId, field, `${name}.${domainField.name}`)
               : { type: 'scalar' },
             hasStorageDefault: column.default !== undefined,
             isPrimaryKey: primaryKeyColumns.has(columnName),
@@ -247,6 +318,40 @@ export function buildModelSet(contract: Contract, multiDomain = false): Contract
         fields,
         ...(brandedId ? { brandedId } : {}),
       });
+    }
+  }
+
+  const modelByName = new Map(
+    models.map((model) => [`${model.namespaceId}\0${model.name}`, model])
+  );
+  const resolveBrandOwner = (model: TableModel, visiting = new Set<string>()): TableModel => {
+    if (model.brandedId) return model;
+    const key = `${model.namespaceId}\0${model.name}`;
+    if (visiting.has(key)) {
+      throw new Error(
+        `Primary-key foreign keys form a cycle at ${model.namespaceId}.${model.name}`
+      );
+    }
+    visiting.add(key);
+    const primaryKey = model.fields.find((field) => field.isPrimaryKey);
+    const target = primaryKey?.fkTarget;
+    const targetModel = target
+      ? modelByName.get(`${target.namespaceId}\0${target.model}`)
+      : undefined;
+    if (!targetModel) {
+      throw new Error(`Model ${model.namespaceId}.${model.name} has no resolvable ID brand`);
+    }
+    return resolveBrandOwner(targetModel, visiting);
+  };
+
+  for (const model of models) {
+    for (const field of model.fields) {
+      if (!field.fkTarget) continue;
+      const target = modelByName.get(`${field.fkTarget.namespaceId}\0${field.fkTarget.model}`);
+      if (!target) continue;
+      const owner = resolveBrandOwner(target);
+      field.fkTarget.idModel = owner.name;
+      field.fkTarget.idNamespaceId = owner.namespaceId;
     }
   }
 

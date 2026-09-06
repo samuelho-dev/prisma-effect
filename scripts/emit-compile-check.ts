@@ -25,6 +25,36 @@ async function main() {
   const typesFile = readFileSync(join(out, 'types.ts'), 'utf-8');
   const enumsFile = readFileSync(join(out, 'enums.ts'), 'utf-8');
 
+  writeFileSync(
+    join(out, 'contract-usage.ts'),
+    `import type { Insertable, Selectable, Updateable } from "prisma-effect-kysely";
+import { PostId, PostTable, TodoId, TodoTable } from "./types.js";
+
+declare const postId: typeof PostId.Type;
+declare const todoId: typeof TodoId.Type;
+declare const selectedTodo: Selectable<typeof TodoTable>;
+
+const insertablePrismaId: Pick<Insertable<typeof PostTable>, "id"> = { id: postId };
+const nullableInsert: Pick<Insertable<typeof PostTable>, "content"> = { content: null };
+const nullableUpdate: Pick<Updateable<typeof PostTable>, "content"> = { content: null };
+const selectedStorageId: typeof TodoId.Type = selectedTodo.id;
+
+// @ts-expect-error storage-generated IDs cannot be inserted
+const invalidStorageId: Pick<Insertable<typeof TodoTable>, "id"> = { id: todoId };
+// @ts-expect-error immutable IDs cannot be updated
+const invalidIdUpdate: Pick<Updateable<typeof PostTable>, "id"> = { id: postId };
+
+void [
+  insertablePrismaId,
+  nullableInsert,
+  nullableUpdate,
+  selectedStorageId,
+  invalidStorageId,
+  invalidIdUpdate,
+];
+`
+  );
+
   // Type-check generated output with a local alias so the package resolves to src.
   const tsconfig = {
     compilerOptions: {

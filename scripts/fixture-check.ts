@@ -27,17 +27,19 @@ try {
     }
   );
 
-  if (emitted.status !== 0) process.exit(emitted.status ?? 1);
-
-  const generated = join(output, 'contract.json');
-  if (!readFileSync(committed).equals(readFileSync(generated))) {
-    console.error('\nPrisma fixture drift detected:');
-    spawnSync('diff', ['-u', committed, generated], { stdio: 'inherit' });
-    console.error('\nRun `bun run fixture:emit` and commit the updated contract.json.');
-    process.exit(1);
+  if (emitted.status !== 0) {
+    process.exitCode = emitted.status ?? 1;
+  } else {
+    const generated = join(output, 'contract.json');
+    if (!readFileSync(committed).equals(readFileSync(generated))) {
+      console.error('\nPrisma fixture drift detected:');
+      spawnSync('diff', ['-u', committed, generated], { stdio: 'inherit' });
+      console.error('\nRun `bun run fixture:emit` and commit the updated contract.json.');
+      process.exitCode = 1;
+    } else {
+      console.log('Prisma fixture is up to date.');
+    }
   }
-
-  console.log('Prisma fixture is up to date.');
 } finally {
   rmSync(output, { recursive: true, force: true });
 }

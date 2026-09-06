@@ -2,21 +2,69 @@
  * Extract a balanced `@customType(...)` expression from Prisma doc text.
  */
 export function extractCustomType(doc: string): string | null {
-  const match = /@customType\s*\(/.exec(doc);
-  if (!match || match.index === undefined) return null;
+  const annotations = [...doc.matchAll(/@customType\b/g)];
+  if (annotations.length === 0) return null;
+  if (annotations.length > 1) throw new Error('duplicate @customType annotations');
 
-  const start = match.index + match[0].length;
-  let depth = 1;
-  let end = start;
-  for (let index = start; index < doc.length && depth > 0; index++) {
-    if (doc[index] === '(') depth++;
-    if (doc[index] === ')') depth--;
-    if (depth === 0) end = index;
-  }
-  if (depth !== 0) return null;
+  const annotation = annotations[0];
+  const annotationStart = annotation.index;
+  const opening = /^@customType\s*\(/.exec(doc.slice(annotationStart));
+  if (!opening) throw new Error('expected @customType(<Effect schema>)');
+
+  const start = annotationStart + opening[0].length;
+  const end = findClosingParenthesis(doc, start);
+  if (end === -1) throw new Error('unclosed @customType annotation');
+
+  const lineEnd = doc.indexOf('\n', end + 1);
+  const trailing = doc.slice(end + 1, lineEnd === -1 ? doc.length : lineEnd).trim();
+  if (trailing) throw new Error('unexpected content after @customType annotation');
 
   const expression = doc.slice(start, end).trim();
-  return expression.startsWith('Schema.') || isCustomType(expression) ? expression : null;
+  if (!expression.startsWith('Schema.') && !isCustomType(expression)) {
+    throw new Error('expected a Schema.* expression or custom schema identifier');
+  }
+  return expression;
+}
+
+function findClosingParenthesis(value: string, start: number): number {
+  let depth = 1;
+  let quote: "'" | '"' | '`' | '/' | null = null;
+  let escaped = false;
+  let regexCharacterClass = false;
+
+  for (let index = start; index < value.length; index++) {
+    const character = value[index];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (quote === '/' && character === '[') {
+        regexCharacterClass = true;
+      } else if (quote === '/' && character === ']') {
+        regexCharacterClass = false;
+      } else if (character === quote && !regexCharacterClass) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+    } else if (character === '/' && startsRegex(value, index)) {
+      quote = '/';
+    } else if (character === '(') {
+      depth++;
+    } else if (character === ')' && --depth === 0) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function startsRegex(value: string, index: number): boolean {
+  const previous = value.slice(0, index).trimEnd().at(-1);
+  return previous === undefined || '([{:;,=!?&|'.includes(previous);
 }
 
 /**
@@ -25,7 +73,22 @@ export function extractCustomType(doc: string): string | null {
 export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
   const annotations = new Map<string, string>();
   let modelName: string | null = null;
+  let namespaceId: string | null = null;
+  let fields: Array<[name: string, customType: string]> = [];
   let docs: string[] = [];
+
+  const finishModel = (): void => {
+    if (!modelName) return;
+    for (const [fieldName, customType] of fields) {
+      const key = `${namespaceId ? `${namespaceId}.` : ''}${modelName}.${fieldName}`;
+      if (annotations.has(key)) throw new Error(`Duplicate @customType annotation for ${key}`);
+      annotations.set(key, customType);
+    }
+    modelName = null;
+    namespaceId = null;
+    fields = [];
+    docs = [];
+  };
 
   for (const line of psl.split(/\r?\n/)) {
     if (!modelName) {
@@ -34,9 +97,8 @@ export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
       continue;
     }
 
-    if (/^\s*}\s*$/.test(line)) {
-      modelName = null;
-      docs = [];
+    if (/^\s*}\s*(?:(?:\/\/.*)|(?:\/\*.*\*\/))?\s*$/.test(line)) {
+      finishModel();
       continue;
     }
 
@@ -46,16 +108,31 @@ export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
       continue;
     }
 
-    if (!trimmed.startsWith('@@') && !trimmed.startsWith('//')) {
+    if (trimmed.startsWith('@@namespace')) {
+      const namespace = /^@@namespace\s*\(\s*"([^"]+)"\s*\)\s*$/.exec(trimmed);
+      if (!namespace?.[1]) {
+        throw new Error(`Invalid @@namespace annotation for model ${modelName}`);
+      }
+      if (namespaceId !== null) {
+        throw new Error(`Duplicate @@namespace annotation for model ${modelName}`);
+      }
+      namespaceId = namespace[1];
+    } else if (!trimmed.startsWith('@@') && !trimmed.startsWith('//')) {
       const field = /^\s*([A-Za-z_]\w*)\s+\S/.exec(line);
-      const customType = docs.length > 0 ? extractCustomType(docs.join('\n')) : null;
-      if (field?.[1] && customType) {
-        annotations.set(`${modelName}.${field[1]}`, customType);
+      if (field?.[1] && docs.some((doc) => doc.includes('@customType'))) {
+        try {
+          const customType = extractCustomType(docs.join('\n'));
+          if (customType) fields.push([field[1], customType]);
+        } catch (error) {
+          throw new Error(`Invalid @customType annotation for ${modelName}.${field[1]}`, {
+            cause: error,
+          });
+        }
       }
     }
     docs = [];
   }
-
+  finishModel();
   return annotations;
 }
 

@@ -47,7 +47,7 @@ export function baseFieldType(field: TableField, override: string | null): strin
   if (override) {
     fieldType = override;
   } else if (field.fkTarget) {
-    fieldType = `${toPascalCase(field.fkTarget.model)}Id`;
+    fieldType = `${toPascalCase(field.fkTarget.idModel)}Id`;
   } else {
     switch (field.kind.type) {
       case 'enum':

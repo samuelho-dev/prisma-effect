@@ -83,9 +83,9 @@ members (`Role.ADMIN`).
 
 ## Field behavior
 
-- Storage defaults → `generated()`; a defaulted single-column PK is read-only
-- Prisma-applied generators such as `uuid()` are insertable and immutable because
-  they are not database defaults
+- Non-primary-key storage defaults → `generated()`
+- A storage-defaulted single-column PK → `columnType(Id, Schema.Never, Schema.Never)`
+- Prisma-applied generators such as `uuid()` are insertable and immutable because they are not database defaults
 - Optional → `Schema.NullOr(type)`
 - Foreign keys → branded ID of the target model
 - Composite primary-key columns fall through to their field types

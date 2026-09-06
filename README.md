@@ -7,16 +7,16 @@ CLI and library for generating Effect Schema types with Kysely-compatible column
 Version 7 targets Prisma 8 contracts and Effect 4. Prisma 7 projects stay on
 the 6.x release line.
 
-| Prisma | Effect | Install                                         |
-| ------ | ------ | ----------------------------------------------- |
-| 8      | 4      | `bun add prisma-effect-kysely@next effect@beta` |
-| 7      | 4      | Pin the required `6.0.0-next.x` release         |
+| Prisma | Effect | Install                                                                  |
+| ------ | ------ | ------------------------------------------------------------------------ |
+| 8      | 4      | `bun add --exact prisma-effect-kysely@next effect@4.0.0-beta.94`         |
+| 7      | 4      | `bun add --exact prisma-effect-kysely@6.0.0-next.7 effect@4.0.0-beta.94` |
 
 Version 7 has no runtime dependency on Prisma packages. Prisma is only needed
 by your application toolchain to emit `contract.json`.
 
-> **Pin the exact prerelease version.** npm-compatible ranges exclude
-> prereleases, so a broad range can resolve to an older major.
+> **Pin exact prerelease versions.** `--exact` resolves the `next` tag once and
+> records the resulting version instead of a mutable range.
 
 ## Setup
 
@@ -107,8 +107,8 @@ Generated enum types are string literal unions; use `"ADMIN"` rather than
 
 ## Field Behavior
 
-- Database defaults (`autoincrement()`, `now()`, and literals) → `generated()`
-- A single-column primary key with a database default → read-only on insert and update
+- Non-primary-key columns with database defaults (`now()` and literals) → `generated()`
+- A single-column primary key with a database default → `columnType(Id, Schema.Never, Schema.Never)`
 - A client-supplied or Prisma-applied primary key (for example `uuid()`) → insertable, immutable
 - Optional fields → `Schema.NullOr(type)`
 - Foreign keys → branded ID type from the target model
@@ -183,6 +183,17 @@ are not supported because Prisma 8 contracts require explicit join models.
 | `prisma-effect-kysely/kysely`    | `columnType`, `generated`, `JsonValue`, type utils |
 | `prisma-effect-kysely/error`     | `NotFoundError`, `QueryError`, `DatabaseError`     |
 | `prisma-effect-kysely/runtime`   | All runtime utilities                              |
+
+```typescript
+import { generate } from 'prisma-effect-kysely/generator';
+
+const { files } = await generate({
+  contract: './prisma/contract.json',
+  source: './prisma/contract.prisma', // optional
+  output: './generated/effect',
+  multiDomain: true, // optional
+});
+```
 
 ## Development
 

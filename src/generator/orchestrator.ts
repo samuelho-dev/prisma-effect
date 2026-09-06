@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, readdir, rm, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { EffectGenerator } from '../effect/generator.js';
@@ -141,11 +141,64 @@ async function writeGeneratedOutput(
 }
 
 function assertSafeNamespaceIds(namespaceIds: readonly string[]): void {
+  const seen = new Map<string, string>();
   for (const namespaceId of namespaceIds) {
     if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(namespaceId)) {
       throw new Error(
         `Contract namespace ${JSON.stringify(namespaceId)} is not a safe output directory name`
       );
+    }
+    const folded = namespaceId.toLowerCase();
+    const previous = seen.get(folded);
+    if (previous) {
+      throw new Error(
+        `Contract namespaces ${JSON.stringify(previous)} and ${JSON.stringify(namespaceId)} share an output directory on case-insensitive filesystems`
+      );
+    }
+    seen.set(folded, namespaceId);
+  }
+}
+
+function errorCode(error: unknown): string | undefined {
+  return error instanceof Error && 'code' in error ? String(error.code) : undefined;
+}
+
+async function removeGeneratedFiles(directory: string): Promise<boolean> {
+  try {
+    if (!(await readFile(join(directory, 'types.ts'), 'utf8')).includes('DO NOT EDIT MANUALLY')) {
+      return false;
+    }
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return false;
+    throw error;
+  }
+
+  await Promise.all(
+    ['types.ts', 'enums.ts', 'index.ts'].map((file) => rm(join(directory, file), { force: true }))
+  );
+  return true;
+}
+
+async function removeObsoleteNamespaceOutput(
+  output: string,
+  namespaceIds: ReadonlySet<string>
+): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(output, { withFileTypes: true });
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return;
+    throw error;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || namespaceIds.has(entry.name)) continue;
+    const directory = join(output, entry.name);
+    if (!(await removeGeneratedFiles(directory))) continue;
+    try {
+      await rmdir(directory);
+    } catch (error) {
+      if (errorCode(error) !== 'ENOTEMPTY') throw error;
     }
   }
 }
@@ -156,8 +209,8 @@ function assertNoCrossNamespaceCycles(modelSet: ContractModelSet): void {
     const targets = graph.get(model.namespaceId) ?? new Set<string>();
     graph.set(model.namespaceId, targets);
     for (const field of model.fields) {
-      if (field.fkTarget && field.fkTarget.namespaceId !== model.namespaceId) {
-        targets.add(field.fkTarget.namespaceId);
+      if (field.fkTarget && field.fkTarget.idNamespaceId !== model.namespaceId) {
+        targets.add(field.fkTarget.idNamespaceId);
       }
     }
   }
@@ -234,16 +287,16 @@ function collectNamespaceReferences(
         )
       );
     }
-    if (field.fkTarget && field.fkTarget.namespaceId !== namespaceId) {
+    if (field.fkTarget && field.fkTarget.idNamespaceId !== namespaceId) {
       fields.set(
         field,
         bindImport(
           imports,
           bindings,
           usedNames,
-          `../${field.fkTarget.namespaceId}/types.js`,
-          field.fkTarget.namespaceId,
-          `${toPascalCase(field.fkTarget.model)}Id`
+          `../${field.fkTarget.idNamespaceId}/types.js`,
+          field.fkTarget.idNamespaceId,
+          `${toPascalCase(field.fkTarget.idModel)}Id`
         )
       );
     }
@@ -260,6 +313,7 @@ export async function generate(options: GenerateOptions): Promise<{ files: strin
   let files: string[];
 
   if (!options.multiDomain) {
+    await removeObsoleteNamespaceOutput(options.output, new Set());
     const imports = new Map<string, string[]>();
     if (modelSet.enums.length > 0) {
       imports.set(
@@ -270,6 +324,8 @@ export async function generate(options: GenerateOptions): Promise<{ files: strin
     files = await writeGeneratedOutput(options.output, modelSet, imports, new Map(), overrides);
   } else {
     assertNoCrossNamespaceCycles(modelSet);
+    await removeGeneratedFiles(options.output);
+    await removeObsoleteNamespaceOutput(options.output, new Set(namespaceIds));
     files = [];
     for (const namespaceId of namespaceIds) {
       const namespaceSet: ContractModelSet = {

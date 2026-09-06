@@ -10,6 +10,10 @@ import { toPascalCase } from '../utils/naming.js';
 import { generateEnumsFile } from './enum.js';
 import { baseFieldType } from './type.js';
 
+function propertyKey(name: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+
 export class EffectGenerator {
   constructor(private readonly modelSet: ContractModelSet) {}
 
@@ -48,7 +52,10 @@ export type ${model.schemaName}Id = typeof ${model.schemaName}Id.Type;`;
     references: ReadonlyMap<TableField, string>
   ): string {
     const fields = valueObject.fields
-      .map((field) => `  ${field.tsName}: ${baseFieldType(field, references.get(field) ?? null)}`)
+      .map(
+        (field) =>
+          `  ${propertyKey(field.tsName)}: ${baseFieldType(field, references.get(field) ?? null)}`
+      )
       .join(',\n');
     return `export const ${valueObject.schemaName} = Schema.Struct({
 ${fields}
@@ -108,20 +115,24 @@ export type ${valueObject.schemaName} = typeof ${valueObject.schemaName}.Type;`;
           model.brandedId?.column === field.column ? `${model.schemaName}Id` : undefined;
         const referencedType = references.get(field);
         const override =
-          overrides.get(`${model.name}.${field.tsName}`) ?? ownIdType ?? referencedType ?? null;
+          overrides.get(`${model.namespaceId}.${model.name}.${field.tsName}`) ??
+          overrides.get(`${model.name}.${field.tsName}`) ??
+          ownIdType ??
+          referencedType ??
+          null;
         const baseType = baseFieldType(field, override);
         const idType =
           hasSinglePrimaryKey && field.isPrimaryKey
             ? (ownIdType ??
               (field.fkTarget
-                ? (referencedType ?? `${toPascalCase(field.fkTarget.model)}Id`)
+                ? (referencedType ?? `${toPascalCase(field.fkTarget.idModel)}Id`)
                 : undefined))
             : undefined;
         const fieldType = applyKyselyHelpers(baseType, field, idType);
         if (field.tsName !== field.column) {
           keyMappings.push({ tsName: field.tsName, column: field.column });
         }
-        return `  ${field.tsName}: ${fieldType}`;
+        return `  ${propertyKey(field.tsName)}: ${fieldType}`;
       })
       .join(',\n');
 
@@ -129,7 +140,7 @@ export type ${valueObject.schemaName} = typeof ${valueObject.schemaName}.Type;`;
       keyMappings.length === 0
         ? ''
         : `.pipe(Schema.encodeKeys({ ${keyMappings
-            .map(({ tsName, column }) => `${tsName}: "${column}"`)
+            .map(({ tsName, column }) => `${propertyKey(tsName)}: ${JSON.stringify(column)}`)
             .join(', ')} }))`;
 
     return `export const ${model.schemaName}Table = Schema.Struct({
