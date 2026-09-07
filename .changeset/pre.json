@@ -5,13 +5,6 @@
     "prisma-effect-kysely": "5.5.0"
   },
   "changesets": [
-    "effect-v4-beta",
-    "enum-to-literals",
-    "insertable-null-and-jointable-fk",
-    "jointable-db-interface-physical-columns",
-    "legacy-customtype-detector",
-    "nodenext-import-extensions",
-    "table-row-split",
-    "uuid-detection-no-name-inference"
+    "prisma-8-contract-cutover"
   ]
 }
