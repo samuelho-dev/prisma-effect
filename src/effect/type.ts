@@ -1,104 +1,78 @@
-import type { DMMF } from '@prisma/generator-helper';
-import { isListField, isRequiredField, isUuidField } from '../prisma/type.js';
-import { extractEffectTypeOverride } from '../utils/annotations.js';
+import type { TableField } from '../prisma/model.js';
 import { toPascalCase } from '../utils/naming.js';
 
-/**
- * Prisma scalar type mapping to Effect Schema types
- * Uses const assertion to avoid type guards
- *
- * Note: DateTime uses Schema.Date so that:
- * - Type = Date (runtime)
- * - Encoded = Date (database)
- * This allows Kysely to work with native Date objects directly.
- * (In Effect 4, Schema.Date is the native-Date schema — no ISO string coercion;
- * it replaces Effect 3's Schema.DateFromSelf.)
- */
-const PRISMA_SCALAR_MAP = {
-  String: 'Schema.String',
-  Int: 'Schema.Number',
-  Float: 'Schema.Number',
-  BigInt: 'Schema.BigInt',
-  Decimal: 'Schema.String', // For precision
-  Boolean: 'Schema.Boolean',
-  DateTime: 'Schema.Date', // Native Date type for Kysely compatibility
-  Json: 'JsonValue', // Recursive JSON type — prevents null absorption in NullOr
-  Bytes: 'Schema.Uint8Array',
-} as const;
+export const CODEC_TO_EFFECT: Record<string, string> = {
+  'pg/text@1': 'Schema.String',
+  'pg/varchar@1': 'Schema.String',
+  'pg/char@1': 'Schema.String',
+  'pg/inet@1': 'Schema.String',
+  'pg/bit@1': 'Schema.String',
+  'pg/varbit@1': 'Schema.String',
+  'pg/enum@1': 'Schema.String',
+  'pg/text-array@1': 'Schema.Array(Schema.String)',
+  'pg/uuid@1': 'Schema.String.check(Schema.isUUID())',
+  'pg/int@1': 'Schema.Number',
+  'pg/int2@1': 'Schema.Number',
+  'pg/int4@1': 'Schema.Number',
+  'pg/int8number@1': 'Schema.Number',
+  'pg/float@1': 'Schema.Number',
+  'pg/float4@1': 'Schema.Number',
+  'pg/float8@1': 'Schema.Number',
+  'pg/int8@1': 'Schema.BigInt',
+  'pg/unboundedint@1': 'Schema.BigInt',
+  'pg/numeric@1': 'Schema.String',
+  'pg/bool@1': 'Schema.Boolean',
+  'pg/date-temporal@1': 'Schema.Date',
+  'pg/timestamp-temporal@1': 'Schema.Date',
+  'pg/timestamptz-temporal@1': 'Schema.Date',
+  'pg/time-temporal@1': 'Schema.String',
+  'pg/timetz@1': 'Schema.String',
+  'pg/interval@1': 'Schema.String',
+  'pg/date-string@1': 'Schema.String',
+  'pg/timestamp-string@1': 'Schema.String',
+  'pg/timestamptz-string@1': 'Schema.String',
+  'pg/time-string@1': 'Schema.String',
+  'pg/json@1': 'JsonValue',
+  'pg/jsonb@1': 'JsonValue',
+  'pg/bytea@1': 'Schema.Uint8Array',
+};
 
-/**
- * Map Prisma field type to Effect Schema type
- * Priority order: annotation → FK branded → UUID → scalar → enum → unknown fallback
- *
- * @param field - The Prisma field to map
- * @param dmmf - The full DMMF document for enum lookups
- * @param fkMap - Optional FK field → target model mapping for branded FK types
- */
-export function mapFieldToEffectType(
-  field: DMMF.Field,
-  dmmf: DMMF.Document,
-  fkMap?: Map<string, string>
-) {
-  // PRIORITY 1: Check for @customType annotation
-  const typeOverride = extractEffectTypeOverride(field);
-  if (typeOverride) {
-    return typeOverride;
-  }
-
-  // PRIORITY 2: Check if this is a FK field with branded target
-  // FK fields use the referenced model's branded ID (e.g., UserId for user_id)
-  if (fkMap && fkMap.has(field.name)) {
-    const targetModel = fkMap.get(field.name)!;
-    return `${toPascalCase(targetModel)}Id`;
-  }
-
-  // PRIORITY 3: Handle String type with UUID detection (non-FK UUIDs)
-  // Effect 4 removed Schema.UUID; UUID validation is now a string check.
-  if (field.type === 'String' && isUuidField(field)) {
-    return 'Schema.String.check(Schema.isUUID())';
-  }
-
-  // PRIORITY 4: Handle scalar types with const assertion lookup
-  const scalarType = PRISMA_SCALAR_MAP[field.type as keyof typeof PRISMA_SCALAR_MAP];
-  if (scalarType) {
-    return scalarType;
-  }
-
-  // PRIORITY 5: Check if it's an enum
-  const enumDef = dmmf.datamodel.enums.find((e) => e.name === field.type);
-  if (enumDef) {
-    // PascalCase name IS the Schema now (not raw enum)
-    return toPascalCase(field.type);
-  }
-
-  // PRIORITY 6: Fallback to Unknown
-  return 'Schema.Unknown';
+export function isJsonCodec(codecId: string): boolean {
+  return codecId === 'pg/json@1' || codecId === 'pg/jsonb@1';
 }
 
-/**
- * Build complete field type with array and optional wrapping
- *
- * @param field - The Prisma field to build type for
- * @param dmmf - The full DMMF document for enum lookups
- * @param fkMap - Optional FK field → target model mapping for branded FK types
- */
-export function buildFieldType(
-  field: DMMF.Field,
-  dmmf: DMMF.Document,
-  fkMap?: Map<string, string>
-) {
-  let baseType = mapFieldToEffectType(field, dmmf, fkMap);
+export function baseFieldType(field: TableField, override: string | null): string {
+  let fieldType: string;
 
-  // Handle arrays
-  if (isListField(field)) {
-    baseType = `Schema.Array(${baseType})`;
+  if (override) {
+    fieldType = override;
+  } else if (field.fkTarget) {
+    fieldType = `${toPascalCase(field.fkTarget.idModel)}Id`;
+  } else {
+    switch (field.kind.type) {
+      case 'enum':
+        fieldType = toPascalCase(field.kind.enumName);
+        break;
+      case 'valueObject':
+        fieldType = toPascalCase(field.kind.name);
+        break;
+      case 'union':
+        fieldType = `Schema.Union([${field.kind.members
+          .map((member) =>
+            member.type === 'valueObject'
+              ? toPascalCase(member.name)
+              : (CODEC_TO_EFFECT[member.codecId] ?? 'Schema.Unknown')
+          )
+          .join(', ')}])`;
+        break;
+      case 'scalar':
+        fieldType = CODEC_TO_EFFECT[field.codecId] ?? 'Schema.Unknown';
+        break;
+    }
   }
 
-  // Handle nullable fields - wrap with NullOr regardless of default value
-  // This ensures SELECT type correctly allows null values (e.g., Boolean? @default(false))
-  if (!isRequiredField(field)) {
-    baseType = `Schema.NullOr(${baseType})`;
-  }
-
-  return baseType;
+  if (field.dict) fieldType = `Schema.Record(Schema.String, ${fieldType})`;
+  if (field.many) fieldType = `Schema.Array(${fieldType})`;
+  if (field.nullable) fieldType = `Schema.NullOr(${fieldType})`;
+  return fieldType;
 }

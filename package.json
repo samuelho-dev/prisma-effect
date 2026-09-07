@@ -1,12 +1,12 @@
 {
   "name": "prisma-effect-kysely",
   "version": "6.0.0-next.7",
-  "description": "Prisma generator that creates Effect Schema types from Prisma schema compatible with Kysely",
+  "description": "Generate Effect Schema and Kysely types from Prisma 8 contracts",
   "license": "MIT",
   "author": "Samuel Ho",
   "main": "dist/kysely/helpers.js",
   "bin": {
-    "prisma-effect-kysely": "dist/generator/index.js"
+    "prisma-effect-kysely": "dist/generator/cli.js"
   },
   "type": "module",
   "exports": {
@@ -63,6 +63,8 @@
   "packageManager": "bun@1.3.5",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
+    "fixture:emit": "cd src/__tests__/fixtures/contract && bunx prisma contract emit --config prisma.config.ts",
+    "fixture:check": "bun run scripts/fixture-check.ts",
     "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -103,14 +105,13 @@
     "@changesets/cli": "^2.31.0",
     "@electric-sql/pglite": "^0.4.5",
     "@eslint/js": "^10.0.0",
-    "@prisma/generator-helper": "^7.8.0",
-    "@prisma/internals": "^7.8.0",
+    "@prisma/orm-postgres": "8.0.0-rc.8",
     "@types/node": "^25.6.0",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
     "@vitest/coverage-v8": "^4.1.5",
     "@vitest/eslint-plugin": "^1.6.16",
-    "effect": "4.0.0-beta.83",
+    "effect": "4.0.0-beta.94",
     "eslint": "^10.0.0",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
@@ -118,7 +119,7 @@
     "kysely": "^0.28.16",
     "kysely-pglite-dialect": "^1.3.1",
     "lint-staged": "^16.4.0",
-    "prisma": "^7.8.0",
+    "prisma": "8.0.0-rc.13",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.59.1",

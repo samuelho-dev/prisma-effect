@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/next]
   pull_request:
-    branches: [main]
+    branches: [main, release/next]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -73,6 +73,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Fixture drift
+        run: bun run fixture:check
+
+      - name: Compile generated output
+        run: bun run test:emit
 
       - name: Run tests with coverage
         run: bun run test:coverage

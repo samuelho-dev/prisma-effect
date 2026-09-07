@@ -17,7 +17,7 @@ import {
 } from '../kysely/helpers';
 
 // Simulate an enum like PAYMENT_STATUS
-const PaymentStatus = Schema.Literal('PENDING', 'SUCCEEDED', 'FAILED');
+const PaymentStatus = Schema.Literals(['PENDING', 'SUCCEEDED', 'FAILED']);
 type PaymentStatus = Schema.Schema.Type<typeof PaymentStatus>;
 
 describe('VariantMarker symbol matching', () => {

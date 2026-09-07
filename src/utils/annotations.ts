@@ -1,74 +1,209 @@
-import type { DMMF } from '@prisma/generator-helper';
-
 /**
- * @customType Annotation Parser
- *
- * Allows overriding Effect Schema types for Prisma-supported fields.
- *
- * WORKS FOR: Prisma scalar types (String, Int, Boolean, DateTime, etc.)
- *
- * USE CASES (Effect 4 syntax — emitted verbatim, so must be v4-valid):
- *   // Length constraint for String field
- *   /// @customType(Schema.String.check(Schema.isMinLength(3)))
- *   email String
- *
- *   // Positive number constraint for Int field
- *   /// @customType(Schema.Number.check(Schema.isGreaterThan(0)))
- *   age Int
- *
- *   // Custom branded type
- *   /// @customType(Schema.String.pipe(Schema.brand('UserId')))
- *   userId String
- *
- * @param field - Prisma DMMF field
- * @returns Extracted type string or null if no annotation found
+ * Extract a balanced `@customType(...)` expression from Prisma doc text.
  */
-export function extractEffectTypeOverride(field: DMMF.Field) {
-  if (!field.documentation) return null;
+export function extractCustomType(doc: string): string | null {
+  const annotation = /@customType\b/.exec(doc);
+  if (!annotation || annotation.index === undefined) return null;
 
-  // Match @customType annotation - handle balanced parentheses
-  const annotationMatch = field.documentation.match(/@customType\s*\(/);
-  if (!annotationMatch) return null;
+  const annotationStart = annotation.index;
+  const opening = /^@customType\s*\(/.exec(doc.slice(annotationStart));
+  if (!opening) throw new Error('expected @customType(<Effect schema>)');
 
-  // Find the matching closing parenthesis
-  const startIdx = field.documentation.indexOf('@customType(') + '@customType('.length;
-  let parenCount = 1;
-  let endIdx = startIdx;
+  const start = annotationStart + opening[0].length;
+  const end = findClosingParenthesis(doc, start);
+  if (end === -1) throw new Error('unclosed @customType annotation');
+  const remaining = doc.slice(0, annotationStart) + doc.slice(end + 1);
+  if (/@customType\b/.test(remaining)) throw new Error('duplicate @customType annotations');
 
-  for (let i = startIdx; i < field.documentation.length && parenCount > 0; i++) {
-    if (field.documentation[i] === '(') parenCount++;
-    if (field.documentation[i] === ')') parenCount--;
-    if (parenCount === 0) {
-      endIdx = i;
-      break;
+  const lineEnd = doc.indexOf('\n', end + 1);
+  const trailing = doc.slice(end + 1, lineEnd === -1 ? doc.length : lineEnd).trim();
+  if (trailing) throw new Error('unexpected content after @customType annotation');
+
+  const expression = doc.slice(start, end).trim();
+  if (!expression.startsWith('Schema.') && !isCustomType(expression)) {
+    throw new Error('expected a Schema.* expression or custom schema identifier');
+  }
+  return expression;
+}
+
+function findClosingParenthesis(value: string, start: number): number {
+  let depth = 1;
+  let quote: "'" | '"' | '`' | '/' | null = null;
+  let escaped = false;
+  let regexCharacterClass = false;
+
+  for (let index = start; index < value.length; index++) {
+    const character = value[index];
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (quote === '/' && character === '[') {
+        regexCharacterClass = true;
+      } else if (quote === '/' && character === ']') {
+        regexCharacterClass = false;
+      } else if (character === quote && !regexCharacterClass) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+    } else if (character === '/' && startsRegex(value, index)) {
+      quote = '/';
+    } else if (character === '(') {
+      depth++;
+    } else if (character === ')' && --depth === 0) {
+      return index;
     }
   }
+  return -1;
+}
 
-  if (parenCount !== 0) {
-    return null;
-  }
-
-  const typeStr = field.documentation.substring(startIdx, endIdx).trim();
-
-  // Validate it's either a custom type or starts with Schema.
-  if (!(typeStr.startsWith('Schema.') || isCustomType(typeStr))) {
-    return null;
-  }
-
-  return typeStr;
+function startsRegex(value: string, index: number): boolean {
+  const previous = value.slice(0, index).trimEnd().at(-1);
+  return (
+    previous === undefined ||
+    '([{:;,=!?&|>'.includes(previous) ||
+    /\b(?:return|case|throw|yield)$/.test(value.slice(0, index).trimEnd())
+  );
 }
 
 /**
- * Check if type string is a custom type reference
- *
- * Custom types are PascalCase identifiers without dots:
- * - Valid: Vector1536, JSONBType, CustomEnum
- * - Invalid: Schema.String, some.nested.type
- *
- * @param typeStr - Type string to check
- * @returns true if it's a custom type reference
+ * Read model-field custom type annotations from a Prisma contract source.
  */
-function isCustomType(typeStr: string) {
+export function parseCustomTypeAnnotations(psl: string): Map<string, string> {
+  const annotations = new Map<string, string>();
+  let modelName: string | null = null;
+  let enclosingNamespaceId: string | null = null;
+  let modelNamespaceId: string | null = null;
+  let fields: Array<[name: string, customType: string]> = [];
+  let docs: string[] = [];
+  let namespaceDepth = 0;
+  let inNamespaceBlockComment = false;
+
+  const namespaceBraceDelta = (line: string): number => {
+    let delta = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = 0; index < line.length; index++) {
+      const character = line[index];
+      const next = line[index + 1];
+      if (inNamespaceBlockComment) {
+        if (character === '*' && next === '/') {
+          inNamespaceBlockComment = false;
+          index++;
+        }
+      } else if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === '\\') escaped = true;
+        else if (character === '"') quoted = false;
+      } else if (character === '/' && next === '/') {
+        break;
+      } else if (character === '/' && next === '*') {
+        inNamespaceBlockComment = true;
+        index++;
+      } else if (character === '"') {
+        quoted = true;
+      } else if (character === '{') {
+        delta++;
+      } else if (character === '}') {
+        delta--;
+      }
+    }
+    return delta;
+  };
+
+  const finishModel = (): void => {
+    if (!modelName) return;
+    for (const [fieldName, customType] of fields) {
+      const key = `${modelNamespaceId ? `${modelNamespaceId}.` : ''}${modelName}.${fieldName}`;
+      if (annotations.has(key)) throw new Error(`Duplicate @customType annotation for ${key}`);
+      annotations.set(key, customType);
+    }
+    modelName = null;
+    modelNamespaceId = null;
+    fields = [];
+    docs = [];
+  };
+
+  for (const line of psl.split(/\r?\n/)) {
+    if (!modelName) {
+      if (!enclosingNamespaceId) {
+        const namespace = /^\s*namespace\s+([A-Za-z_]\w*)\s*\{/.exec(line);
+        if (namespace?.[1]) {
+          enclosingNamespaceId = namespace[1];
+          namespaceDepth = 1;
+          continue;
+        }
+      }
+
+      const model =
+        !enclosingNamespaceId || namespaceDepth === 1
+          ? /^\s*model\s+([A-Za-z_]\w*)\s*\{/.exec(line)
+          : null;
+      if (model?.[1]) {
+        modelName = model[1];
+        modelNamespaceId = enclosingNamespaceId;
+        continue;
+      }
+
+      if (enclosingNamespaceId) {
+        namespaceDepth += namespaceBraceDelta(line);
+        if (namespaceDepth === 0) enclosingNamespaceId = null;
+      }
+      continue;
+    }
+
+    if (/^\s*}/.test(line)) {
+      finishModel();
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (trimmed.startsWith('///')) {
+      docs.push(trimmed.slice(3).trimStart());
+      continue;
+    }
+
+    if (trimmed.startsWith('@@namespace')) {
+      const namespace =
+        /^@@namespace\s*\(\s*("(?:\\.|[^"\\])*")\s*\)\s*(?:(?:\/\/.*)|(?:\/\*.*\*\/))?\s*$/.exec(
+          trimmed
+        );
+      if (!namespace?.[1]) {
+        throw new Error(`Invalid @@namespace annotation for model ${modelName}`);
+      }
+      if (modelNamespaceId !== null) {
+        throw new Error(`Duplicate @@namespace annotation for model ${modelName}`);
+      }
+      try {
+        modelNamespaceId = JSON.parse(namespace[1]) as string;
+      } catch (error) {
+        throw new Error(`Invalid @@namespace annotation for model ${modelName}`, { cause: error });
+      }
+    } else if (!trimmed.startsWith('@@') && !trimmed.startsWith('//')) {
+      const field = /^\s*([A-Za-z_]\w*)\s+\S/.exec(line);
+      if (field?.[1] && docs.some((doc) => doc.includes('@customType'))) {
+        try {
+          const customType = extractCustomType(docs.join('\n'));
+          if (customType) fields.push([field[1], customType]);
+        } catch (error) {
+          throw new Error(`Invalid @customType annotation for ${modelName}.${field[1]}`, {
+            cause: error,
+          });
+        }
+      }
+    }
+    docs = [];
+  }
+  finishModel();
+  return annotations;
+}
+
+function isCustomType(typeStr: string): boolean {
   return /^[A-Z][A-Za-z0-9]*$/.test(typeStr);
 }
 
@@ -213,14 +348,8 @@ export function detectLegacyEffectV3Syntax(typeStr: string): string[] {
 }
 
 /**
- * Check if field has any custom type annotations
- *
- * @param fields - Array of Prisma fields
- * @returns true if any field uses custom types in @effectType
+ * Check whether any annotation references an imported custom schema.
  */
-export function hasCustomTypeAnnotations(fields: readonly DMMF.Field[]) {
-  return fields.some((field) => {
-    const override = extractEffectTypeOverride(field);
-    return override && isCustomType(override);
-  });
+export function hasCustomTypeAnnotations(annotations: ReadonlyMap<string, string>): boolean {
+  return [...annotations.values()].some(isCustomType);
 }
