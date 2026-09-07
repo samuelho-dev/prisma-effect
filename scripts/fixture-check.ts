@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const repoRoot = join(import.meta.dirname, '..');
-const fixtureDir = join(repoRoot, 'src/__tests__/fixtures/prisma8');
+const fixtureDir = join(repoRoot, 'src/__tests__/fixtures/contract');
 const committed = join(fixtureDir, 'contract.json');
 const output = mkdtempSync(join(tmpdir(), 'pek-fixture-'));
 

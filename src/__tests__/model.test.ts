@@ -8,7 +8,7 @@ import {
   type TableField,
   type TableModel,
 } from '../prisma/model';
-import fixtureJson from './fixtures/prisma8/contract.json';
+import fixtureJson from './fixtures/contract/contract.json';
 import {
   column,
   foreignKey,
@@ -38,7 +38,7 @@ function requireEnum(set: ContractModelSet, name: string): EnumModel {
   return found;
 }
 
-describe('Prisma 8 contract model derivation', () => {
+describe('contract model derivation', () => {
   it('models variant and ordinary foreign-key fields', () => {
     const bug = requireModel(fixtureSet, 'Bug');
     const post = requireModel(fixtureSet, 'Post');

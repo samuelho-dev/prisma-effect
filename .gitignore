@@ -45,4 +45,4 @@ lerna-debug.log*
 .opencode/
 
 # Prisma contract fixture
-src/__tests__/fixtures/prisma8/contract.d.ts
+src/__tests__/fixtures/contract/contract.d.ts

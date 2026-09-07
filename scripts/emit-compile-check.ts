@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { generate } from '../src/generator/orchestrator.js';
 
 const repoRoot = join(import.meta.dirname, '..');
-const fixture = join(repoRoot, 'src/__tests__/fixtures/prisma8/contract.json');
+const fixture = join(repoRoot, 'src/__tests__/fixtures/contract/contract.json');
 
 async function main() {
   const dir = mkdtempSync(join(tmpdir(), 'pek-emit-'));

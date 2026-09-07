@@ -63,7 +63,7 @@
   "packageManager": "bun@1.3.5",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
-    "fixture:emit": "cd src/__tests__/fixtures/prisma8 && bunx prisma contract emit --config prisma.config.ts",
+    "fixture:emit": "cd src/__tests__/fixtures/contract && bunx prisma contract emit --config prisma.config.ts",
     "fixture:check": "bun run scripts/fixture-check.ts",
     "prepare": "husky",
     "test": "vitest run",

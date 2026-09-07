@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { parseCustomTypeAnnotations } from '../utils/annotations';
 
 const fixtureSource = readFileSync(
-  join(import.meta.dirname, 'fixtures/prisma8/contract.prisma'),
+  join(import.meta.dirname, 'fixtures/contract/contract.prisma'),
   'utf8'
 );
 

@@ -18,8 +18,8 @@ function generatedTable(source: string, name: string): string {
   return source.slice(start, end);
 }
 
-describe('Prisma 8 contract code generation', () => {
-  const contract = join(import.meta.dirname, 'fixtures/prisma8/contract.json');
+describe('contract code generation', () => {
+  const contract = join(import.meta.dirname, 'fixtures/contract/contract.json');
   let temporaryDirectory: string;
   let output: string;
   let files: string[];

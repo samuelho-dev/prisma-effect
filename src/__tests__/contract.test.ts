@@ -1,9 +1,9 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseContract, readContract } from '../prisma/contract';
-import fixtureJson from './fixtures/prisma8/contract.json';
+import fixtureJson from './fixtures/contract/contract.json';
 
-describe('Prisma 8 contract input', () => {
+describe('contract input', () => {
   it('parses the emitted fixture contract', () => {
     const contract = parseContract(fixtureJson);
 
@@ -37,7 +37,7 @@ describe('Prisma 8 contract input', () => {
   });
 
   it('explains how to create a missing contract', async () => {
-    const missingPath = join(import.meta.dirname, 'fixtures/prisma8/does-not-exist.contract.json');
+    const missingPath = join(import.meta.dirname, 'fixtures/contract/does-not-exist.contract.json');
 
     await expect(readContract(missingPath)).rejects.toThrow(
       `Contract not found at ${missingPath}. Run "prisma contract emit" first.`
