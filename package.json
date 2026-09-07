@@ -1,6 +1,6 @@
 {
   "name": "prisma-effect-kysely",
-  "version": "6.0.0-next.7",
+  "version": "7.0.0-next.0",
   "description": "Generate Effect Schema and Kysely types from Prisma 8 contracts",
   "license": "MIT",
   "author": "Samuel Ho",
